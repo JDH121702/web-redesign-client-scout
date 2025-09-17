@@ -1,473 +1,331 @@
-/* Main layout and colors - Modern sleek color scheme with subtle gradients */
-.main {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    color: #e6e6e6;
+:root {
+    --color-background: #f4f6fb;
+    --color-card: #ffffff;
+    --color-border: #e4e9f2;
+    --color-primary: #3f72af;
+    --color-primary-dark: #2b5d8f;
+    --color-accent: #f9a826;
+    --color-text: #1f2a44;
+    --color-muted: #6b7280;
 }
-.st-bw {
-    background-color: #242442;
-    border-radius: 12px;
-}
+
+body,
 .stApp {
-    max-width: 1200px;
-    margin: 0 auto;
+    font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background:
+        radial-gradient(circle at top left, rgba(63, 114, 175, 0.08), transparent 55%),
+        radial-gradient(circle at bottom right, rgba(249, 168, 38, 0.06), transparent 45%),
+        var(--color-background);
+    color: var(--color-text);
 }
 
-/* Typography - Improved font stack and weights */
-h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-    letter-spacing: -0.01em;
-    color: #e6e6e6;
+.main .block-container {
+    max-width: 1180px;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
 }
+
 h1 {
-    font-size: 2.5rem;
+    font-size: 2.75rem;
     font-weight: 700;
-    margin-bottom: 0.75rem;
-    background: linear-gradient(90deg, #4cc9f0 0%, #4361ee 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-h2 {
-    font-size: 1.8rem;
-    font-weight: 600;
-    color: #b8c1ec;
-    margin-top: 1.5rem;
-}
-h3 {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: #a2a8d3;
-}
-p, li, div {
-    font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #a2a8d3;
-    line-height: 1.6;
-    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--color-text);
 }
 
-/* Buttons - More elegant with subtle animations */
-.stButton>button {
-    background: linear-gradient(90deg, #4361ee 0%, #3a0ca3 100%);
-    color: #e6e6e6;
-    border-radius: 8px;
-    border: none;
-    padding: 0.6rem 1.2rem;
-    font-weight: 500;
-    font-size: 0.95rem;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.15);
-}
-.stButton>button:hover {
-    background: linear-gradient(90deg, #3a0ca3 0%, #480ca8 100%);
-    box-shadow: 0 7px 14px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
-}
-.stButton>button:active {
-    transform: translateY(1px);
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+h1::after {
+    content: "";
+    display: block;
+    width: 72px;
+    height: 4px;
+    margin-top: 0.75rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-accent) 100%);
 }
 
-/* Cards and containers - More sophisticated shadows and borders */
-.st-bb {
+h2,
+h3,
+h4 {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+p,
+li,
+span,
+div {
+    color: var(--color-muted);
+}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #ffffff 0%, #f4f6fb 100%);
+    border-right: 1px solid var(--color-border);
+}
+
+[data-testid="stSidebar"] * {
+    color: var(--color-text);
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding-top: 2rem;
+}
+
+/* Buttons */
+.stButton>button,
+.stDownloadButton>button {
+    background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #ffffff;
     border-radius: 12px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
-    border: 1px solid rgba(70, 70, 120, 0.8);
-    overflow: hidden;
-    background-color: #242442;
-}
-
-/* Sidebar - Elegant gradient background */
-.css-1d391kg, .css-12oz5g7 {
-    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-}
-.sidebar .sidebar-content {
-    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-    color: #e6e6e6;
-}
-
-/* Sidebar text and elements */
-.sidebar .sidebar-content p, 
-.sidebar .sidebar-content div {
-    color: #b8c1ec;
-}
-.sidebar .sidebar-content h2 {
-    color: #e6e6e6;
-}
-
-/* Form elements - More refined styling */
-input[type="text"], textarea, .stTextInput>div>div>input, .stTextArea>div>div>textarea {
-    color: #e6e6e6 !important;
-    border-radius: 8px !important;
-    border: 1px solid #3f3f6e !important;
-    padding: 0.75rem 1rem !important;
-    background-color: #2c2c54 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
-    transition: all 0.2s ease !important;
-}
-input[type="text"]:focus, textarea:focus, 
-.stTextInput>div>div>input:focus, 
-.stTextArea>div>div>textarea:focus {
-    border-color: #4361ee !important;
-    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25) !important;
-}
-
-/* Selectbox and multiselect - Improved styling */
-.stSelectbox>div, .stMultiSelect>div {
-    border-radius: 8px !important;
-}
-.stSelectbox>div>div>div, .stMultiSelect>div>div>div {
-    color: #e6e6e6 !important;
-    background-color: #2c2c54 !important;
-    border-radius: 8px !important;
-    border: 1px solid #3f3f6e !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Readonly text areas - Better contrast */
-.stTextArea[data-baseweb="textarea"] div[disabled] {
-    color: #b8c1ec !important;
-    background-color: #1e1e42 !important;
-    opacity: 0.9 !important;
-    border: 1px solid #3f3f6e !important;
-}
-
-/* Dataframes - More elegant table styling */
-.dataframe {
-    border-collapse: separate;
-    border-spacing: 0;
     border: none;
-    font-size: 0.9rem;
-    width: 100%;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-}
-.dataframe th {
-    background: linear-gradient(90deg, #3a0ca3 0%, #4361ee 100%);
-    color: #e6e6e6;
-    padding: 0.75rem 1rem;
-    text-align: left;
+    padding: 0.65rem 1.4rem;
     font-weight: 600;
-    border: none;
-}
-.dataframe td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #3f3f6e;
-    color: #e6e6e6;
-    background-color: #242442;
-}
-.dataframe tr:nth-child(even) {
-    background-color: #1e1e42;
-}
-.dataframe tr:last-child td {
-    border-bottom: none;
-}
-.dataframe tr:hover {
-    background-color: #2c2c54;
+    font-size: 0.95rem;
+    box-shadow: 0 14px 32px -18px rgba(63, 114, 175, 0.75);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-/* Metrics - More impactful styling */
-[data-testid="stMetricValue"] {
-    font-size: 2rem !important;
-    font-weight: 700 !important;
-    background: linear-gradient(90deg, #4cc9f0 0%, #4361ee 100%);
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-}
-[data-testid="stMetricLabel"] {
-    font-size: 1rem !important;
-    font-weight: 500 !important;
-    color: #b8c1ec !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-}
-[data-testid="stMetricDelta"] {
-    font-size: 1rem !important;
+.stButton>button:hover,
+.stDownloadButton>button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 36px -18px rgba(43, 93, 143, 0.85);
+    background: linear-gradient(90deg, var(--color-primary-dark) 0%, #1d4b7a 100%);
 }
 
-/* Expanders - More elegant styling */
-.streamlit-expanderHeader {
-    font-weight: 600;
-    color: #e6e6e6;
-    background-color: #2c2c54;
-    border-radius: 8px;
-    padding: 0.75rem 1rem !important;
-    border: 1px solid #3f3f6e;
-}
-.streamlit-expanderHeader:hover {
-    background-color: #3f3f6e;
-}
-.streamlit-expanderContent {
-    border: 1px solid #3f3f6e;
-    border-top: none;
-    border-radius: 0 0 8px 8px;
-    padding: 1.25rem !important;
-    background-color: #242442;
+.stButton>button:focus,
+.stDownloadButton>button:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(63, 114, 175, 0.25);
 }
 
-/* Make navigation and dropdowns non-editable */
-.stSelectbox[aria-label="Navigation"] input, 
-.stSelectbox[aria-label="Select Client"] input,
-.stSelectbox[aria-label="Select Template Type"] input,
-.stSelectbox[aria-label="Select Client"] input {
-    pointer-events: none !important;
-}
-
-/* Custom containers for dashboard cards */
+/* Cards */
 .dashboard-card {
-    background-color: #242442;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
-    border: 1px solid rgba(70, 70, 120, 0.8);
+    background: var(--color-card);
+    border-radius: 18px;
+    padding: 1.6rem;
     margin-bottom: 1.5rem;
+    border: 1px solid var(--color-border);
+    box-shadow: 0 22px 60px -30px rgba(15, 23, 42, 0.35);
 }
 
-/* Improved styling for client cards */
+.dashboard-card h2,
+.dashboard-card h3 {
+    margin-top: 0;
+}
+
+/* Client cards */
 .client-card {
-    background-color: #242442;
-    border-radius: 12px;
-    padding: 1.25rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-    border-left: 4px solid #4361ee;
-    margin-bottom: 1rem;
-    transition: all 0.2s ease;
+    background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--color-border);
+    box-shadow: 0 16px 35px -25px rgba(15, 23, 42, 0.45);
 }
-.client-card:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
-}
+
 .client-card h4 {
-    color: #b8c1ec;
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
-}
-.client-card p {
-    margin: 0.25rem 0;
-    font-size: 0.95rem;
-    color: #e6e6e6;
+    margin-bottom: 0.4rem;
+    color: var(--color-text);
 }
 
-/* High priority styling */
-.high-priority {
-    border-left: 4px solid #ef476f;
+.client-card.high-priority {
+    border-left: 4px solid #ef4444;
 }
 
-/* Medium priority styling */
-.medium-priority {
-    border-left: 4px solid #ffd166;
+.client-card.medium-priority {
+    border-left: 4px solid #f97316;
 }
 
-/* Low priority styling */
-.low-priority {
-    border-left: 4px solid #06d6a0;
+.client-card.low-priority {
+    border-left: 4px solid #10b981;
 }
 
-/* Form container styling */
-.form-container {
-    background-color: #242442;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-    border: 1px solid #3f3f6e;
+.activity-badge {
+    background: rgba(63, 114, 175, 0.12);
+    color: var(--color-primary);
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
 }
 
-/* Tabs styling */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-.stTabs [data-baseweb="tab"] {
-    height: 50px;
-    white-space: pre-wrap;
-    background-color: #1e1e42;
-    border-radius: 8px 8px 0 0;
-    border: 1px solid #3f3f6e;
-    border-bottom: none;
-    color: #b8c1ec;
-    font-weight: 500;
-}
-.stTabs [aria-selected="true"] {
-    background-color: #242442;
-    color: #4cc9f0;
-    border-top: 2px solid #4cc9f0;
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
-/* Progress bar styling */
-.stProgress > div > div > div > div {
-    background-color: #4361ee;
+.status-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
 }
 
-/* Checkbox styling */
-.stCheckbox > div > div > div {
-    border-radius: 4px;
+.status-badge.status-high {
+    background: rgba(239, 68, 68, 0.12);
+    color: #b91c1c;
 }
 
-/* Radio button styling */
-.stRadio > div {
-    gap: 12px;
-}
-.stRadio > div > div > label {
-    padding: 0.5rem 0;
-    color: #e6e6e6;
+.status-badge.status-medium {
+    background: rgba(249, 115, 22, 0.15);
+    color: #c2410c;
 }
 
-/* Slider styling */
-.stSlider > div > div > div > div {
-    background-color: #4361ee;
+.status-badge.status-low {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
 }
 
-/* Date input styling */
-.stDateInput > div > div > input {
-    border-radius: 8px !important;
-    padding: 0.75rem 1rem !important;
-    background-color: #2c2c54 !important;
-    color: #e6e6e6 !important;
-    border: 1px solid #3f3f6e !important;
+.priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
 
-/* Additional modern styling for better contrast and readability */
-::placeholder {
-    color: #a2a8d3 !important;
-    opacity: 0.7 !important;
-}
-
-/* Scrollbar styling for a more modern look */
-::-webkit-scrollbar {
+.priority-badge::before {
+    content: "";
     width: 8px;
     height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #1a1a2e;
-}
-::-webkit-scrollbar-thumb {
-    background: #3f3f6e;
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #4361ee;
+    border-radius: 50%;
+    background-color: currentColor;
 }
 
-/* Tooltip styling */
-[data-baseweb="tooltip"] {
-    background-color: #242442 !important;
-    border: 1px solid #3f3f6e !important;
-    color: #e6e6e6 !important;
-    border-radius: 6px !important;
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.75rem;
 }
 
-/* Code blocks styling */
-.stCodeBlock {
-    border-radius: 8px !important;
-}
-.stCodeBlock > div {
-    background-color: #1a1a2e !important;
+.stTabs [data-baseweb="tab"] {
+    background: rgba(63, 114, 175, 0.08);
+    color: var(--color-muted);
+    border-radius: 999px;
+    padding: 0.45rem 1.2rem;
+    font-weight: 500;
+    border: 1px solid transparent;
 }
 
-/* Client details styling */
-.client-details label, 
-.contact-info label, 
-.website-info label {
-    color: #4cc9f0;
+.stTabs [data-baseweb="tab"]:hover {
+    border-color: rgba(63, 114, 175, 0.2);
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--color-primary) !important;
+    background: rgba(63, 114, 175, 0.18) !important;
+    border-color: rgba(63, 114, 175, 0.4) !important;
+}
+
+/* Metric styling */
+[data-testid="stMetricLabel"] {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+}
+
+[data-testid="stMetricValue"] {
+    color: var(--color-text);
+    font-weight: 700;
+    font-size: 2rem;
+}
+
+/* Progress bars */
+div[data-testid="stProgressBar"] > div > div {
+    background: rgba(63, 114, 175, 0.16);
+    border-radius: 999px;
+}
+
+div[data-testid="stProgressBar"] > div > div > div {
+    background: linear-gradient(90deg, var(--color-primary) 0%, #4f46e5 100%);
+    border-radius: 999px;
+}
+
+/* Form elements */
+.stTextInput>div>div>input,
+.stTextArea>div>div>textarea,
+.stSelectbox>div>div,
+.stMultiSelect>div>div,
+.stNumberInput>div>div>input {
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--color-border) !important;
+    padding: 0.7rem 1rem !important;
+    color: var(--color-text) !important;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+.stTextInput>div>div>input:focus,
+.stTextArea>div>div>textarea:focus,
+.stSelectbox>div>div:focus-within,
+.stMultiSelect>div>div:focus-within {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 4px rgba(63, 114, 175, 0.15) !important;
+}
+
+/* Dataframe styling */
+.dataframe {
+    border-collapse: collapse;
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-card);
+    box-shadow: 0 18px 45px -30px rgba(15, 23, 42, 0.32);
+}
+
+.dataframe th {
+    background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #ffffff;
+    padding: 0.85rem 1.1rem;
+    font-weight: 600;
+    border-bottom: none;
+}
+
+.dataframe td {
+    padding: 0.8rem 1.1rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+}
+
+.dataframe tr:nth-child(even) {
+    background: #f9fbff;
+}
+
+.dataframe tr:hover {
+    background: rgba(63, 114, 175, 0.12);
+}
+
+/* Expanders */
+.streamlit-expanderHeader {
+    background: var(--color-card);
+    border-radius: 12px;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
     font-weight: 600;
 }
 
-.client-details span, 
-.contact-info span, 
-.website-info span,
-.client-details a, 
-.contact-info a, 
-.website-info a {
-    color: #a2a8d3;
+.streamlit-expanderHeader:hover {
+    border-color: rgba(63, 114, 175, 0.35);
 }
 
-/* Fix for code display in UI */
-pre, code {
-    background-color: #1a1a2e;
-    border-radius: 6px;
-    padding: 0.5rem;
-    font-family: 'Consolas', 'Monaco', monospace;
-    color: #4cc9f0;
-    border: 1px solid #3f3f6e;
-    overflow-x: auto;
+/* Success and info messages */
+.stAlert {
+    border-radius: 12px;
+    border: 1px solid var(--color-border);
 }
 
-/* Hide raw HTML/CSS that might be displayed as text */
-.raw-html-content,
-div:has(> pre:contains("<p style=")),
-div:has(> pre:contains("<div style=")),
-div:has(> pre:contains("<span style=")),
-div:contains("<p style="),
-div:contains("<div style="),
-div:contains("<span style=") {
-    display: none !important;
-}
-
-/* Score styling */
-.score-container {
-    margin-bottom: 1.5rem;
-}
-
-.score-label {
-    margin-bottom: 0.25rem;
-    font-weight: 500;
-    color: #4cc9f0;
-}
-
-.score-bar-container {
-    background-color: #1e1e42;
-    border-radius: 8px;
-    height: 8px;
-    margin-bottom: 1rem;
-    overflow: hidden;
-}
-
-.score-bar {
-    height: 100%;
-    border-radius: 8px;
-}
-
-.score-bar.medium {
-    background-color: #ffd166;
-}
-
-.score-bar.high {
-    background-color: #06d6a0;
-}
-
-.score-bar.low {
-    background-color: #ef476f;
-}
-
-.score-value {
-    text-align: right;
-    margin-top: -0.75rem;
-    font-size: 0.85rem;
-    color: #a2a8d3;
-}
-
-/* Hide inline styles that might be showing */
-[style*="background-color:#edf2f7"],
-[style*="background-color: #edf2f7"],
-[style*="background-color:#ffffff"],
-[style*="background-color: #ffffff"] {
-    background-color: #242442 !important;
-}
-
-/* Override any white text that might be set inline */
-[style*="color:#ffffff"],
-[style*="color: #ffffff"],
-[style*="color:white"],
-[style*="color: white"],
-[style*="color:#4a5568"],
-[style*="color: #4a5568"],
-[style*="color:#718096"],
-[style*="color: #718096"] {
-    color: #a2a8d3 !important;
-}
-
-/* Override progress bar colors */
-[style*="background-color:#ed8936"],
-[style*="background-color: #ed8936"] {
-    background-color: #ffd166 !important;
+/* Download area */
+.stTextArea div[disabled] textarea {
+    background: #f9fbff !important;
+    color: var(--color-muted) !important;
 }
