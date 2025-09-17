@@ -15,16 +15,46 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
-import os
+import sys
+from contextlib import contextmanager
 
 # Set page config
 st.set_page_config(page_title="Web Redesign Client Scout", layout="wide", initial_sidebar_state="expanded")
 
+# Utility helpers -----------------------------------------------------------
+
+def get_asset_path(relative_path: str) -> Path:
+    """Return an absolute path for bundled assets.
+
+    When the application is bundled as a PyInstaller executable, assets are
+    copied to a temporary directory exposed through ``sys._MEIPASS``. During
+    normal development ``__file__`` is available instead. This helper keeps the
+    rest of the code agnostic of the execution environment.
+    """
+
+    base_path = getattr(sys, "_MEIPASS", Path(__file__).parent)  # type: ignore[attr-defined]
+    return Path(base_path) / relative_path
+
+
+@contextmanager
+def styled_card(class_name: str = "dashboard-card"):
+    """Context manager that wraps content in a styled card container."""
+
+    st.markdown(f"<div class='{class_name}'>", unsafe_allow_html=True)
+    try:
+        yield
+    finally:
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
 # Load custom CSS from external file
-def load_css(css_file):
-    with open(css_file, 'r') as f:
-        css = f.read()
-    return css
+def load_css(css_file: str) -> str:
+    css_path = get_asset_path(css_file)
+    try:
+        return css_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        st.warning("Custom styles could not be loaded; falling back to defaults.")
+        return ""
 
 # Apply the custom CSS
 st.markdown(f"<style>{load_css('styles.css')}</style>", unsafe_allow_html=True)
@@ -40,6 +70,8 @@ page = st.sidebar.selectbox("Navigation", ["Dashboard", "Client Database", "Webs
 
 # Function to calculate website age in years
 def calculate_age(date):
+    if pd.isna(date):
+        return np.nan
     return (datetime.now() - pd.to_datetime(date)).days / 365.25
 
 # Function to analyze a website (simplified for demo)
@@ -169,6 +201,14 @@ if 'client_data' not in st.session_state:
     st.session_state.client_data['Last Website Update'] = pd.to_datetime(st.session_state.client_data['Last Website Update'])
     st.session_state.client_data['Last Contact Date'] = pd.to_datetime(st.session_state.client_data['Last Contact Date'])
 
+# Ensure datetime columns remain consistent across reruns
+st.session_state.client_data['Last Website Update'] = pd.to_datetime(
+    st.session_state.client_data['Last Website Update'], errors='coerce'
+)
+st.session_state.client_data['Last Contact Date'] = pd.to_datetime(
+    st.session_state.client_data['Last Contact Date'], errors='coerce'
+)
+
 # Dashboard Page
 if page == "Dashboard":
     col1, col2 = st.columns([2, 1])
@@ -183,120 +223,119 @@ if page == "Dashboard":
         mobile_unfriendly_count = st.session_state.client_data['Mobile Friendly'].value_counts().get(False, 0)
         
         # Display metrics in a grid with improved styling
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-        
-        with metric_col1:
-            st.metric("Total Prospects", f"{total_clients}")
-        
-        with metric_col2:
-            st.metric("Avg Website Age", f"{avg_website_age:.1f} years")
-        
-        with metric_col3:
-            st.metric("Total Potential Value", f"${total_potential_value:,.0f}")
-        
-        with metric_col4:
-            st.metric("Not Mobile Friendly", f"{mobile_unfriendly_count} sites")
-        st.markdown("</div>", unsafe_allow_html=True)
-        
+        with styled_card():
+            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+            with metric_col1:
+                st.metric("Total Prospects", f"{total_clients}")
+
+            with metric_col2:
+                st.metric("Avg Website Age", f"{avg_website_age:.1f} years")
+
+            with metric_col3:
+                st.metric("Total Potential Value", f"${total_potential_value:,.0f}")
+
+            with metric_col4:
+                st.metric("Not Mobile Friendly", f"{mobile_unfriendly_count} sites")
+
         # Create charts with improved styling
         st.subheader("Analysis")
-        
-        # Chart 1: Website Speed Score Distribution
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        fig1 = px.bar(
-            st.session_state.client_data,
-            x='Company Name',
-            y='Website Speed Score',
-            color='Priority',
-            color_discrete_map={'High': '#e53e3e', 'Medium': '#ed8936', 'Low': '#38a169'},
-            title="Website Speed Score by Company"
-        )
-        fig1.update_layout(
-            height=400,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            title_font=dict(size=18, color='#2d3748'),
-            font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
-            margin=dict(l=40, r=40, t=60, b=40),
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Chart 2: Potential Value vs. Website Age
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        fig2 = px.scatter(
-            st.session_state.client_data,
-            x=st.session_state.client_data['Last Website Update'].apply(calculate_age),
-            y='Potential Value',
-            size='Design Score',
-            color='Industry',
-            hover_name='Company Name',
-            title="Potential Value vs. Website Age"
-        )
-        fig2.update_xaxes(title="Website Age (Years)")
-        fig2.update_yaxes(title="Potential Value ($)")
-        fig2.update_layout(
-            height=400,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            title_font=dict(size=18, color='#2d3748'),
-            font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
-            margin=dict(l=40, r=40, t=60, b=40),
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        perf_tab, value_tab = st.tabs(["Performance Snapshot", "Value vs. Website Age"])
+
+        with perf_tab:
+            with styled_card():
+                fig1 = px.bar(
+                    st.session_state.client_data,
+                    x='Company Name',
+                    y='Website Speed Score',
+                    color='Priority',
+                    color_discrete_map={'High': '#e53e3e', 'Medium': '#ed8936', 'Low': '#38a169'},
+                    title="Website Speed Score by Company"
+                )
+                fig1.update_layout(
+                    height=400,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    title_font=dict(size=18, color='#2d3748'),
+                    font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
+                    margin=dict(l=40, r=40, t=60, b=40),
+                )
+                st.plotly_chart(fig1, use_container_width=True)
+
+        with value_tab:
+            with styled_card():
+                fig2 = px.scatter(
+                    st.session_state.client_data,
+                    x=st.session_state.client_data['Last Website Update'].apply(calculate_age),
+                    y='Potential Value',
+                    size='Design Score',
+                    color='Industry',
+                    hover_name='Company Name',
+                    title="Potential Value vs. Website Age"
+                )
+                fig2.update_xaxes(title="Website Age (Years)")
+                fig2.update_yaxes(title="Potential Value ($)")
+                fig2.update_layout(
+                    height=400,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    title_font=dict(size=18, color='#2d3748'),
+                    font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
+                    margin=dict(l=40, r=40, t=60, b=40),
+                )
+                st.plotly_chart(fig2, use_container_width=True)
     
     with col2:
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        st.subheader("Priority Prospects")
-        
-        # Filter high priority prospects
-        high_priority = st.session_state.client_data[st.session_state.client_data['Priority'] == 'High'].sort_values('Potential Value', ascending=False)
-        
-        if len(high_priority) > 0:
-            for _, client in high_priority.iterrows():
-                with st.container():
+        with styled_card():
+            st.subheader("Priority Prospects")
+
+            # Filter high priority prospects
+            high_priority = st.session_state.client_data[st.session_state.client_data['Priority'] == 'High'].sort_values('Potential Value', ascending=False)
+
+            if len(high_priority) > 0:
+                for _, client in high_priority.iterrows():
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="client-card high-priority">
+                            <h4>{client['Company Name']}</h4>
+                            <p style='color:#718096; font-size:0.9rem;'>{client['Industry']}</p>
+                            <p><span style='font-weight:500;'>Contact:</span> {client['Contact Person']}</p>
+                            <p><span style='font-weight:500;'>Value:</span> ${client['Potential Value']:,.0f}</p>
+                            <p><span style='font-weight:500;'>Status:</span> <span class="status-badge status-high">{client['Status']}</span></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("No high priority prospects yet. Add some in the Client Database.")
+
+        with styled_card():
+            st.subheader("Recent Activity")
+
+            # Sort by most recent contact
+            recent_contacts = st.session_state.client_data.sort_values('Last Contact Date', ascending=False).head(5)
+
+            if len(recent_contacts) > 0:
+                for _, client in recent_contacts.iterrows():
+                    days_ago = (datetime.now() - pd.to_datetime(client['Last Contact Date'])).days
+                    priority_class = "high-priority" if client['Priority'] == "High" else "medium-priority" if client['Priority'] == "Medium" else "low-priority"
+                    status_badge_class = "status-high" if client['Priority'] == "High" else "status-medium" if client['Priority'] == "Medium" else "status-low"
+
                     st.markdown(f"""
-                    <div class="client-card high-priority">
-                        <h4>{client['Company Name']}</h4>
-                        <p style='color:#718096; font-size:0.9rem;'>{client['Industry']}</p>
-                        <p><span style='font-weight:500;'>Contact:</span> {client['Contact Person']}</p>
-                        <p><span style='font-weight:500;'>Value:</span> ${client['Potential Value']:,.0f}</p>
-                        <p><span style='font-weight:500;'>Status:</span> <span style='background-color:#fed7d7; color:#e53e3e; padding:2px 8px; border-radius:12px; font-size:0.8rem;'>{client['Status']}</span></p>
+                    <div class="client-card {priority_class}" style="padding:0.75rem; margin-bottom:0.75rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <p style="margin:0; font-weight:600;">{client['Company Name']}</p>
+                                <p style="margin:0;">
+                                    <span class="status-badge {status_badge_class}">{client['Status']}</span>
+                                </p>
+                            </div>
+                            <div class="activity-badge">
+                                {days_ago} days ago
+                            </div>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
-        else:
-            st.info("No high priority prospects yet. Add some in the Client Database.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        st.subheader("Recent Activity")
-        
-        # Sort by most recent contact
-        recent_contacts = st.session_state.client_data.sort_values('Last Contact Date', ascending=False).head(5)
-        
-        if len(recent_contacts) > 0:
-            for _, client in recent_contacts.iterrows():
-                days_ago = (datetime.now() - pd.to_datetime(client['Last Contact Date'])).days
-                priority_class = "high-priority" if client['Priority'] == "High" else "medium-priority" if client['Priority'] == "Medium" else "low-priority"
-                
-                st.markdown(f"""
-                <div class="client-card {priority_class}" style="padding:0.75rem; margin-bottom:0.75rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <p style="margin:0; font-weight:600;">{client['Company Name']}</p>
-                            <p style="margin:0; color:#718096; font-size:0.85rem;">{client['Status']}</p>
-                        </div>
-                        <div style="background-color:#ebf8ff; color:#3182ce; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:500;">
-                            {days_ago} days ago
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No recent activity yet.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.info("No recent activity yet.")
 
 # Client Database Page
 elif page == "Client Database":
@@ -401,46 +440,48 @@ elif page == "Client Database":
                     st.experimental_rerun()
     
     # Display the data table with edit capability
-    st.dataframe(
-        filtered_data,
-        use_container_width=True,
-        height=400
-    )
+    with styled_card():
+        st.dataframe(
+            filtered_data,
+            use_container_width=True,
+            height=400
+        )
     
     # Action buttons for selected client
     st.subheader("Client Actions")
-    selected_client = st.selectbox("Select Client", options=filtered_data['Company Name'].tolist())
-    
-    if selected_client:
-        client_data = filtered_data[filtered_data['Company Name'] == selected_client].iloc[0]
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            if st.button("Edit Client"):
-                st.session_state.edit_client = selected_client
-        
-        with col2:
-            if st.button("Delete Client"):
-                st.session_state.client_data = st.session_state.client_data[
-                    st.session_state.client_data['Company Name'] != selected_client
-                ]
-                st.success(f"Deleted {selected_client} from the database.")
-                st.experimental_rerun()
-        
-        with col3:
-            if st.button("Log Contact"):
-                # Update last contact date
-                client_index = st.session_state.client_data.index[
-                    st.session_state.client_data['Company Name'] == selected_client
-                ].tolist()[0]
-                st.session_state.client_data.at[client_index, 'Last Contact Date'] = datetime.now()
-                st.success(f"Updated last contact date for {selected_client}.")
-                st.experimental_rerun()
-        
-        with col4:
-            if st.button("Update Status"):
-                st.session_state.update_status_client = selected_client
+    with styled_card():
+        selected_client = st.selectbox("Select Client", options=filtered_data['Company Name'].tolist())
+
+        if selected_client:
+            client_data = filtered_data[filtered_data['Company Name'] == selected_client].iloc[0]
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                if st.button("Edit Client"):
+                    st.session_state.edit_client = selected_client
+
+            with col2:
+                if st.button("Delete Client"):
+                    st.session_state.client_data = st.session_state.client_data[
+                        st.session_state.client_data['Company Name'] != selected_client
+                    ]
+                    st.success(f"Deleted {selected_client} from the database.")
+                    st.experimental_rerun()
+
+            with col3:
+                if st.button("Log Contact"):
+                    # Update last contact date
+                    client_index = st.session_state.client_data.index[
+                        st.session_state.client_data['Company Name'] == selected_client
+                    ].tolist()[0]
+                    st.session_state.client_data.at[client_index, 'Last Contact Date'] = datetime.now()
+                    st.success(f"Updated last contact date for {selected_client}.")
+                    st.experimental_rerun()
+
+            with col4:
+                if st.button("Update Status"):
+                    st.session_state.update_status_client = selected_client
         
         # Handle status update
         if 'update_status_client' in st.session_state and st.session_state.update_status_client == selected_client:
@@ -526,82 +567,81 @@ elif page == "Client Database":
                     st.experimental_rerun()
         
         # Display client details with improved styling
-        st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
-        st.subheader("Client Details")
-        
-        # Priority badge
-        priority_color = "#e53e3e" if client_data['Priority'] == "High" else "#ed8936" if client_data['Priority'] == "Medium" else "#38a169"
-        st.markdown(f"""
-        <div style="margin-bottom:1rem;">
-            <span style="background-color:{priority_color}20; color:{priority_color}; padding:4px 12px; border-radius:16px; font-size:0.85rem; font-weight:500;">
-                {client_data['Priority']} Priority
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Use Streamlit native components instead of HTML
-            with st.container():
-                st.markdown("#### Contact Information")
-                col1a, col1b = st.columns([1, 2])
-                with col1a:
-                    st.markdown("**Person:**")
-                    st.markdown("**Email:**")
-                    st.markdown("**Phone:**")
-                with col1b:
-                    st.markdown(f"{client_data['Contact Person']}")
-                    st.markdown(f"{client_data['Contact Email']}")
-                    st.markdown(f"{client_data['Contact Phone']}")
-                
-                st.markdown("#### Business Information")
-                col1a, col1b = st.columns([1, 2])
-                with col1a:
-                    st.markdown("**Industry:**")
-                    st.markdown("**Potential Value:**")
-                    st.markdown("**Status:**")
-                    st.markdown("**Last Contact:**")
-                with col1b:
-                    st.markdown(f"{client_data['Industry']}")
-                    st.markdown(f"${client_data['Potential Value']:,.0f}")
-                    st.markdown(f"{client_data['Status']}")
-                    st.markdown(f"{client_data['Last Contact Date'].strftime('%Y-%m-%d')}")
-        
-        with col2:
-            # Use Streamlit native components instead of HTML
-            with st.container():
-                st.markdown("#### Website Information")
-                
-                col2a, col2b = st.columns([1, 2])
-                with col2a:
-                    st.markdown("**URL:**")
-                    st.markdown("**Last Update:**")
-                    st.markdown("**Mobile Friendly:**")
-                with col2b:
-                    st.markdown(f"[{client_data['Website URL']}]({client_data['Website URL']})")
-                    st.markdown(f"{client_data['Last Website Update'].strftime('%Y-%m-%d')} ({calculate_age(client_data['Last Website Update']):.1f} years ago)")
-                    st.markdown(f"{'Yes' if client_data['Mobile Friendly'] else 'No'}")
-                
-                # Speed Score
-                st.markdown("**Speed Score:**")
-                speed_score = client_data['Website Speed Score']
-                st.progress(speed_score/100)
-                col2c1, col2c2 = st.columns([3, 1])
-                with col2c2:
-                    st.markdown(f"{speed_score}/100")
-                
-                # Design Score
-                st.markdown("**Design Score:**")
-                design_score = client_data['Design Score']
-                st.progress(design_score/100)
-                col2d1, col2d2 = st.columns([3, 1])
-                with col2d2:
-                    st.markdown(f"{design_score}/100")
-        
-        st.subheader("Notes")
-        st.text_area("Client Notes", value=client_data['Notes'], height=200, key="readonly_notes", disabled=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        with styled_card():
+            st.subheader("Client Details")
+
+            # Priority badge
+            priority_color = "#e53e3e" if client_data['Priority'] == "High" else "#ed8936" if client_data['Priority'] == "Medium" else "#38a169"
+            st.markdown(f"""
+            <div style="margin-bottom:1rem;">
+                <span class="priority-badge" style="color:{priority_color}; border-color:{priority_color}33; background-color:{priority_color}1a;">
+                    {client_data['Priority']} Priority
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # Use Streamlit native components instead of HTML
+                with st.container():
+                    st.markdown("#### Contact Information")
+                    col1a, col1b = st.columns([1, 2])
+                    with col1a:
+                        st.markdown("**Person:**")
+                        st.markdown("**Email:**")
+                        st.markdown("**Phone:**")
+                    with col1b:
+                        st.markdown(f"{client_data['Contact Person']}")
+                        st.markdown(f"{client_data['Contact Email']}")
+                        st.markdown(f"{client_data['Contact Phone']}")
+
+                    st.markdown("#### Business Information")
+                    col1a, col1b = st.columns([1, 2])
+                    with col1a:
+                        st.markdown("**Industry:**")
+                        st.markdown("**Potential Value:**")
+                        st.markdown("**Status:**")
+                        st.markdown("**Last Contact:**")
+                    with col1b:
+                        st.markdown(f"{client_data['Industry']}")
+                        st.markdown(f"${client_data['Potential Value']:,.0f}")
+                        st.markdown(f"{client_data['Status']}")
+                        st.markdown(f"{client_data['Last Contact Date'].strftime('%Y-%m-%d')}")
+
+            with col2:
+                # Use Streamlit native components instead of HTML
+                with st.container():
+                    st.markdown("#### Website Information")
+
+                    col2a, col2b = st.columns([1, 2])
+                    with col2a:
+                        st.markdown("**URL:**")
+                        st.markdown("**Last Update:**")
+                        st.markdown("**Mobile Friendly:**")
+                    with col2b:
+                        st.markdown(f"[{client_data['Website URL']}]({client_data['Website URL']})")
+                        st.markdown(f"{client_data['Last Website Update'].strftime('%Y-%m-%d')} ({calculate_age(client_data['Last Website Update']):.1f} years ago)")
+                        st.markdown(f"{'Yes' if client_data['Mobile Friendly'] else 'No'}")
+
+                    # Speed Score
+                    st.markdown("**Speed Score:**")
+                    speed_score = client_data['Website Speed Score']
+                    st.progress(speed_score/100)
+                    col2c1, col2c2 = st.columns([3, 1])
+                    with col2c2:
+                        st.markdown(f"{speed_score}/100")
+
+                    # Design Score
+                    st.markdown("**Design Score:**")
+                    design_score = client_data['Design Score']
+                    st.progress(design_score/100)
+                    col2d1, col2d2 = st.columns([3, 1])
+                    with col2d2:
+                        st.markdown(f"{design_score}/100")
+
+            st.subheader("Notes")
+            st.text_area("Client Notes", value=client_data['Notes'], height=200, key="readonly_notes", disabled=True)
 
 # Website Analyzer Page
 elif page == "Website Analyzer":
