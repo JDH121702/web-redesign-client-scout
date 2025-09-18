@@ -1176,7 +1176,14 @@ elif page == "Client Database":
                             st.markdown(f"{selected_client_data['Industry']}")
                             st.markdown(f"${selected_client_data['Potential Value']:,.0f}")
                             st.markdown(f"{selected_client_data['Status']}")
-                            st.markdown(f"{selected_client_data['Last Contact Date'].strftime('%Y-%m-%d')}")
+
+                            last_contact_raw = selected_client_data.get('Last Contact Date')
+                            if pd.isna(last_contact_raw):
+                                last_contact_display = "—"
+                            else:
+                                last_contact_timestamp = pd.to_datetime(last_contact_raw)
+                                last_contact_display = last_contact_timestamp.strftime('%Y-%m-%d')
+                            st.markdown(last_contact_display)
 
                 with col2:
                     with st.container():
@@ -1189,7 +1196,21 @@ elif page == "Client Database":
                             st.markdown("**Mobile Friendly:**")
                         with col2b:
                             st.markdown(f"[{selected_client_data['Website URL']}]({selected_client_data['Website URL']})")
-                            st.markdown(f"{selected_client_data['Last Website Update'].strftime('%Y-%m-%d')} ({calculate_age(selected_client_data['Last Website Update']):.1f} years ago)")
+
+                            last_update_raw = selected_client_data.get('Last Website Update')
+                            if pd.isna(last_update_raw):
+                                last_update_display = "—"
+                            else:
+                                last_update_timestamp = pd.to_datetime(last_update_raw)
+                                age_years = calculate_age(last_update_timestamp)
+                                if pd.isna(age_years):
+                                    last_update_display = last_update_timestamp.strftime('%Y-%m-%d')
+                                else:
+                                    last_update_display = (
+                                        f"{last_update_timestamp.strftime('%Y-%m-%d')} "
+                                        f"({age_years:.1f} years ago)"
+                                    )
+                            st.markdown(last_update_display)
                             st.markdown(f"{'Yes' if selected_client_data['Mobile Friendly'] else 'No'}")
 
                         st.markdown("**Speed Score:**")
