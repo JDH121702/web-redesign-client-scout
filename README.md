@@ -19,8 +19,10 @@ A Streamlit application for tracking and analyzing potential clients for web red
 1. Clone this repository
 2. Install the required packages:
    ```
-   pip install streamlit pandas plotly openpyxl pillow requests beautifulsoup4
+   pip install -r requirements.txt
    ```
+   Using the bundled requirements file ensures compatible dependency versions
+   (for example, the build process requires `numpy<2`).
 3. Run the application:
    ```
    streamlit run web_redesign_client_scout.py
@@ -40,6 +42,10 @@ The project includes a helper script that wraps [PyInstaller](https://pyinstalle
    python build_executable.py
    ```
 3. The bundled application will be available at `dist/WebRedesignClientScout.exe`. Copy the file to the target Windows machine and double-click it to launch the app.
+
+If the build script reports that the executable cannot be overwritten, make sure
+no previous copy of `WebRedesignClientScout.exe` is still running before
+retrying.
 
 The build script automatically includes the custom CSS theme, so the packaged app retains the polished UI from the development environment.
 

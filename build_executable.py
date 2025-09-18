@@ -66,6 +66,20 @@ def build(pyinstaller_version_override: str | None = None) -> None:
 
     use_modern_collection = _supports_modern_collection(pyinstaller_version)
 
+    dist_dir = project_root / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    output_path = dist_dir / "WebRedesignClientScout.exe"
+    if output_path.exists():
+        try:
+            output_path.unlink()
+        except PermissionError as exc:
+            raise SystemExit(
+                "Unable to overwrite the existing executable at "
+                f"{output_path.resolve()}.\n"
+                "Close any running instances of WebRedesignClientScout.exe "
+                "and run the build again."
+            ) from exc
+
     pyinstaller_args = [
         "--noconfirm",
         "--clean",
