@@ -43,11 +43,15 @@ def _supports_modern_collection(pyinstaller_version: str) -> bool:
 
 def build(pyinstaller_version_override: str | None = None) -> None:
     project_root = Path(__file__).parent
-    css_file = project_root / "styles.css"
-    if not css_file.exists():
-        raise FileNotFoundError(f"Expected CSS file at {css_file!s}")
+    asset_files = {
+        "styles.css": project_root / "styles.css",
+        "web_redesign_client_scout.py": project_root / "web_redesign_client_scout.py",
+    }
 
-    add_data_arg = f"{css_file}{os.pathsep}."
+    missing_assets = [name for name, path in asset_files.items() if not path.exists()]
+    if missing_assets:
+        missing_assets_str = ", ".join(missing_assets)
+        raise FileNotFoundError(f"Expected asset file(s) missing: {missing_assets_str}")
 
     if pyinstaller_version_override is not None:
         pyinstaller_version = pyinstaller_version_override
@@ -69,11 +73,12 @@ def build(pyinstaller_version_override: str | None = None) -> None:
         "--noconsole",
         "--name",
         "WebRedesignClientScout",
-        "--add-data",
-        add_data_arg,
         "--hidden-import",
         "streamlit.web.bootstrap",
     ]
+
+    for asset_path in asset_files.values():
+        pyinstaller_args.extend(["--add-data", f"{asset_path}{os.pathsep}."])
 
     if use_modern_collection:
         pyinstaller_args.extend(
