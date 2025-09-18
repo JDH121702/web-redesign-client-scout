@@ -32,11 +32,20 @@ def _ensure_streamlit_metadata() -> None:
         original_version: Callable[[str], str] = importlib_metadata.version
         original_distribution = importlib_metadata.distribution
 
+        import importlib.util
+
+        streamlit_spec = importlib.util.find_spec("streamlit")
+        if streamlit_spec is not None and streamlit_spec.origin is not None:
+            streamlit_package_root = Path(streamlit_spec.origin).resolve().parent
+        else:
+            streamlit_package_root = Path(__file__).resolve().parent
+
         class _StreamlitDistribution(importlib_metadata.Distribution):
             """Minimal distribution object used as a fallback."""
 
-            def __init__(self, version: str) -> None:
+            def __init__(self, version: str, base_path: Path) -> None:
                 self._version = version
+                self._base_path = base_path
 
             def read_text(self, filename: str):  # type: ignore[override]
                 if filename in {"METADATA", "PKG-INFO", ""}:
@@ -44,7 +53,12 @@ def _ensure_streamlit_metadata() -> None:
                 return None
 
             def locate_file(self, path):  # type: ignore[override]
-                return Path(path)
+                from os import fspath
+
+                resolved_path = Path(fspath(path))
+                if resolved_path.is_absolute():
+                    return resolved_path
+                return self._base_path / resolved_path
 
         def _patched_version(name: str) -> str:
             if name == "streamlit":
@@ -53,7 +67,7 @@ def _ensure_streamlit_metadata() -> None:
 
         def _patched_distribution(name: str):
             if name == "streamlit":
-                return _StreamlitDistribution(fallback_version)
+                return _StreamlitDistribution(fallback_version, streamlit_package_root)
             return original_distribution(name)
 
         importlib_metadata.version = _patched_version  # type: ignore[assignment]
@@ -69,7 +83,7 @@ def main() -> None:
     if not script_path.exists():
         raise FileNotFoundError(f"Unable to locate Streamlit app at {script_path!s}")
 
-    flag_options = {"server.headless": False}
+    flag_options = {"server.headless": False, "global.developmentMode": False}
     bootstrap.run(str(script_path), "", [], flag_options)
 
 
