@@ -16,6 +16,11 @@ from openpyxl.chart import BarChart, Reference
 import sys
 from contextlib import contextmanager
 from typing import Dict, Iterable, List, Sequence
+from urllib.parse import urlparse
+import re
+
+import requests
+from bs4 import BeautifulSoup
 
 # Set page config
 st.set_page_config(page_title="Web Redesign Client Scout", layout="wide", initial_sidebar_state="expanded")
@@ -201,115 +206,441 @@ def calculate_age(date):
         return np.nan
     return (datetime.now() - pd.to_datetime(date)).days / 365.25
 
-# Function to analyze a website (simplified for demo)
+# Function to analyze a website using live heuristics
 def analyze_website(url):
+    def _normalize_url(raw_url: str) -> str:
+        candidate = raw_url.strip()
+        if not candidate:
+            raise ValueError("Please provide a website URL to analyze.")
+        parsed = urlparse(candidate)
+        if not parsed.scheme:
+            candidate = f"https://{candidate}"
+            parsed = urlparse(candidate)
+        if not parsed.netloc:
+            raise ValueError("The website URL is missing a domain name.")
+        return candidate
+
+    def _fetch(session: requests.Session, target_url: str):
+        start = time.perf_counter()
+        response = session.get(target_url, timeout=12)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        return response, elapsed_ms
+
+    def _clamp(value: float, lower: float = 0, upper: float = 100) -> float:
+        return max(lower, min(upper, value))
+
+    def _score_response_time(ms: float) -> float:
+        if ms <= 1000:
+            return 95
+        if ms <= 2000:
+            return 85
+        if ms <= 3000:
+            return 70
+        if ms <= 4500:
+            return 55
+        if ms <= 6000:
+            return 45
+        return 35
+
+    def _score_page_weight(kb: float) -> float:
+        if kb <= 700:
+            return 92
+        if kb <= 1500:
+            return 80
+        if kb <= 2500:
+            return 65
+        if kb <= 4000:
+            return 52
+        return 40
+
+    def _score_resource_count(count: int) -> float:
+        if count <= 25:
+            return 90
+        if count <= 40:
+            return 75
+        if count <= 60:
+            return 60
+        return 45
+
     try:
-        # This is a simplified simulation - in a real app, you would perform actual website analysis
-        time.sleep(1)  # Simulate processing time
-
-        last_update = datetime(random.randint(2014, 2023), random.randint(1, 12), random.randint(1, 28))
-        mobile_friendly = random.choice([True, False])
-        speed_score = random.randint(35, 95)
-
-        design_breakdown = {
-            category: random.randint(40, 92) for category in DESIGN_CATEGORY_LIBRARY.keys()
-        }
-        design_score = int(np.clip(np.mean(list(design_breakdown.values())) + random.randint(-4, 4), 0, 100))
-
-        strengths: List[str] = []
-        gaps: List[str] = []
-        recommended_actions: List[str] = []
-
-        for category, score in design_breakdown.items():
-            details = DESIGN_CATEGORY_LIBRARY.get(category, {})
-            if score >= 72:
-                strengths.append(f"{category} ({score}/100) — {details.get('strength', '')}")
-            elif score <= 65:
-                gaps.append(f"{category} ({score}/100) — {details.get('gap', '')}")
-                recommended_actions.append(
-                    f"Raise {category.lower()} by {details.get('action', 'designing focused improvements for this area.')}"
-                )
-            else:
-                recommended_actions.append(
-                    f"Tighten {category.lower()} ({score}/100) so it matches the stronger sections. {details.get('action', '')}"
-                )
-
-        # Ensure lists contain unique, meaningful entries
-        recommended_actions = list(dict.fromkeys([action for action in recommended_actions if action.strip()]))
-        strengths = list(dict.fromkeys([item for item in strengths if item.strip()]))
-        gaps = list(dict.fromkeys([item for item in gaps if item.strip()]))
-
-        weakest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1])[:2]]
-        strongest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1], reverse=True)[:2]]
-
-        summary_parts = [
-            f"The design benchmark for {url} lands at **{design_score}/100**."
-        ]
-        if weakest:
-            summary_parts.append(
-                f"Greatest friction sits within {_human_join(weakest)} where visual cohesion and storytelling drop off."
-            )
-        if strongest:
-            summary_parts.append(
-                f"Strengths you can amplify include {_human_join(strongest)}."
-            )
-        summary_parts.append(
-            "These insights give you both the internal roadmap and the narrative to show clients why a redesign matters."
-        )
-        design_summary = " ".join(summary_parts)
-
-        if not gaps:
-            gaps.append("The core system is strong; focus on polishing micro-interactions to stay ahead of competitors.")
-        if not recommended_actions:
-            recommended_actions.append("Document a lightweight design system playbook to protect the gains made across the experience.")
-
-        evidence_points: List[str] = []
-        for category, score in sorted(design_breakdown.items(), key=lambda kv: kv[1])[:3]:
-            detail = DESIGN_CATEGORY_LIBRARY.get(category, {})
-            evidence_points.append(
-                f"{category} is trending at {score}/100 — {detail.get('gap', 'there is clear room for improvement that prospects will notice.')}"
-            )
-
-        site_age = calculate_age(last_update)
-        evidence_points.append(
-            f"The site has not seen a major refresh in roughly {site_age:.1f} years, so newer UX conventions are missing."
-        )
-
-        client_value_points: List[str] = []
-        if weakest:
-            lift = random.randint(12, 26)
-            client_value_points.append(
-                f"Elevating {_human_join(weakest)} typically unlocks {lift}% more qualified leads for redesign clients."
-            )
-        if speed_score < 70:
-            client_value_points.append(
-                f"Speed is scoring {speed_score}/100; every second of load delay can reduce conversions by up to 7%."
-            )
-        if not mobile_friendly:
-            client_value_points.append(
-                "Mobile visitors encounter friction — 65% of B2B research now happens on phones, so this is high-impact."
-            )
-        if not client_value_points:
-            client_value_points.append(
-                "Even with respectable fundamentals, a strategic refresh can showcase new offerings and keep the brand ahead of competitors."
-            )
-
-        return {
-            'mobile_friendly': mobile_friendly,
-            'speed_score': speed_score,
-            'design_score': design_score,
-            'last_update': last_update,
-            'design_breakdown': design_breakdown,
-            'design_summary': design_summary,
-            'design_strengths': strengths,
-            'design_gaps': gaps,
-            'recommended_actions': recommended_actions,
-            'client_value_points': client_value_points,
-            'evidence_points': evidence_points,
-        }
-    except Exception:
-        st.error(f"Failed to analyze {url}. Please check the URL and try again.")
+        normalized_url = _normalize_url(url)
+    except ValueError as exc:
+        st.error(str(exc))
         return None
+
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+    )
+
+    try:
+        response, response_time_ms = _fetch(session, normalized_url)
+    except requests.RequestException:
+        if normalized_url.startswith("https://"):
+            fallback = "http://" + normalized_url[len("https://") :]
+            try:
+                response, response_time_ms = _fetch(session, fallback)
+                normalized_url = fallback
+            except requests.RequestException as exc:  # pragma: no cover - network errors are surfaced to the UI
+                st.error(f"Failed to reach {url}. {exc}")
+                return None
+        else:
+            st.error(f"Failed to reach {url}. Please verify the address and try again.")
+            return None
+    except Exception as exc:  # pragma: no cover - safety net for unexpected issues
+        st.error(f"Failed to analyze {url}. {exc}")
+        return None
+
+    status_code = response.status_code
+    content = response.content or b""
+    page_size_kb = len(content) / 1024 if content else 0.0
+
+    if not response.text:
+        response.encoding = response.apparent_encoding or "utf-8"
+    page_text = response.text or content.decode("utf-8", errors="ignore")
+
+    soup = BeautifulSoup(page_text, "html.parser")
+
+    last_modified_header = response.headers.get("Last-Modified")
+    last_update: datetime | None
+    if last_modified_header:
+        parsed_last_update = pd.to_datetime(last_modified_header, utc=True, errors="coerce")
+        if pd.notna(parsed_last_update):
+            last_update = parsed_last_update.tz_convert(None).to_pydatetime()
+        else:
+            last_update = None
+    else:
+        last_update = None
+
+    meta_viewport = soup.find("meta", attrs={"name": re.compile("viewport", re.I)})
+    if not meta_viewport:
+        meta_viewport = soup.find("meta", attrs={"property": re.compile("viewport", re.I)})
+    viewport_content = meta_viewport.get("content", "").lower() if meta_viewport else ""
+    mobile_friendly = "width=device-width" in viewport_content or "initial-scale" in viewport_content
+
+    images = soup.find_all("img")
+    image_count = len(images)
+    images_with_alt = sum(1 for img in images if (img.get("alt") or "").strip())
+    missing_alt_count = image_count - images_with_alt
+    alt_ratio = images_with_alt / image_count if image_count else 1.0
+
+    scripts = [script for script in soup.find_all("script") if script.get("src")]
+    script_count = len(scripts)
+
+    links = soup.find_all("a")
+    cta_keywords = [
+        "contact",
+        "book",
+        "schedule",
+        "demo",
+        "quote",
+        "start",
+        "consult",
+        "call",
+        "enquire",
+        "enquiry",
+        "enroll",
+        "buy",
+        "shop",
+        "signup",
+        "sign up",
+        "get started",
+    ]
+    cta_count = 0
+    for link in links:
+        text = link.get_text(strip=True).lower()
+        if text and any(keyword in text for keyword in cta_keywords):
+            cta_count += 1
+    tel_links = sum(
+        1 for link in links if (link.get("href") or "").lower().startswith(("tel:", "mailto:"))
+    )
+
+    forms_count = len(soup.find_all("form"))
+
+    text_content = " ".join(segment.strip() for segment in soup.stripped_strings)
+    word_count = len(text_content.split())
+    paragraphs = soup.find_all("p")
+    paragraph_count = len(paragraphs)
+    avg_paragraph_words = word_count / paragraph_count if paragraph_count else float(word_count)
+
+    structured_data = soup.find_all(
+        "script", attrs={"type": lambda value: value and "ld+json" in value.lower()}
+    )
+
+    response_score = _score_response_time(response_time_ms)
+    weight_score = _score_page_weight(page_size_kb)
+    resource_score = _score_resource_count(image_count + script_count)
+    speed_score = int(round(_clamp(0.5 * response_score + 0.3 * weight_score + 0.2 * resource_score)))
+
+    title_tag = soup.find("title")
+    title_length = len(title_tag.get_text(strip=True)) if title_tag else 0
+    favicon_present = bool(
+        soup.find("link", rel=lambda value: value and "icon" in value.lower())
+    )
+    og_site_name = bool(soup.find("meta", attrs={"property": "og:site_name"}))
+
+    brand_score = 60
+    if favicon_present:
+        brand_score += 8
+    if og_site_name:
+        brand_score += 7
+    if title_length >= 30:
+        brand_score += 5
+    if not title_tag:
+        brand_score -= 12
+    brand_score = _clamp(brand_score, 35, 92)
+
+    visual_score = 62
+    heading_counts = {tag: len(soup.find_all(tag)) for tag in ["h1", "h2", "h3"]}
+    if heading_counts.get("h1", 0) == 1:
+        visual_score += 10
+    elif heading_counts.get("h1", 0) == 0:
+        visual_score -= 12
+    if heading_counts.get("h2", 0) >= 2:
+        visual_score += 8
+    if heading_counts.get("h3", 0) >= 3:
+        visual_score += 4
+    if paragraph_count and avg_paragraph_words <= 110:
+        visual_score += 6
+    elif avg_paragraph_words > 150:
+        visual_score -= 8
+    visual_score = _clamp(visual_score, 30, 90)
+
+    content_score = 65
+    if 400 <= word_count <= 1500:
+        content_score += 6
+    elif word_count > 2200 or word_count < 150:
+        content_score -= 8
+    if paragraph_count >= 8:
+        content_score += 4
+    if avg_paragraph_words < 80:
+        content_score += 4
+    elif avg_paragraph_words > 140:
+        content_score -= 5
+    if structured_data:
+        content_score += 4
+    content_score = _clamp(content_score, 35, 92)
+
+    conversion_score = 55
+    if cta_count >= 3:
+        conversion_score += 15
+    elif cta_count >= 1:
+        conversion_score += 8
+    else:
+        conversion_score -= 6
+    if forms_count >= 1:
+        conversion_score += 10
+    if tel_links >= 1:
+        conversion_score += 5
+    conversion_score = _clamp(conversion_score, 30, 90)
+
+    accessibility_score = 68
+    if alt_ratio >= 0.8:
+        accessibility_score += 8
+    elif alt_ratio < 0.5:
+        accessibility_score -= 10
+    if mobile_friendly:
+        accessibility_score += 6
+    else:
+        accessibility_score -= 12
+    if heading_counts.get("h1", 0) == 1:
+        accessibility_score += 4
+    elif heading_counts.get("h1", 0) == 0:
+        accessibility_score -= 6
+    html_tag = soup.find("html")
+    if html_tag and html_tag.get("lang"):
+        accessibility_score += 4
+    accessibility_score = _clamp(accessibility_score, 30, 92)
+
+    design_breakdown = {
+        "Brand Cohesion": round(brand_score),
+        "Visual Hierarchy": round(visual_score),
+        "Content Clarity": round(content_score),
+        "Conversion Readiness": round(conversion_score),
+        "Accessibility": round(accessibility_score),
+    }
+    design_score = int(np.clip(np.mean(list(design_breakdown.values())), 0, 100))
+
+    strengths: List[str] = []
+    gaps: List[str] = []
+    recommended_actions: List[str] = []
+
+    for category, score in design_breakdown.items():
+        details = DESIGN_CATEGORY_LIBRARY.get(category, {})
+        if score >= 72:
+            strengths.append(f"{category} ({score}/100) — {details.get('strength', '')}")
+        elif score <= 65:
+            gaps.append(f"{category} ({score}/100) — {details.get('gap', '')}")
+            recommended_actions.append(
+                f"Raise {category.lower()} by {details.get('action', 'designing focused improvements for this area.')}"
+            )
+        else:
+            recommended_actions.append(
+                f"Tighten {category.lower()} ({score}/100) so it matches the stronger sections. {details.get('action', '')}"
+            )
+
+    recommended_actions = list(dict.fromkeys([action for action in recommended_actions if action.strip()]))
+    strengths = list(dict.fromkeys([item for item in strengths if item.strip()]))
+    gaps = list(dict.fromkeys([item for item in gaps if item.strip()]))
+
+    weakest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1])[:2]]
+    strongest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1], reverse=True)[:2]]
+
+    site_age = calculate_age(last_update)
+
+    summary_parts = [
+        f"The design benchmark for {normalized_url} lands at **{design_score}/100** based on live structure, content, and accessibility checks."
+    ]
+    if pd.notna(site_age):
+        summary_parts.append(
+            f"Server headers suggest the last significant refresh was roughly {site_age:.1f} years ago, which shapes how modern the experience feels."
+        )
+    summary_parts.append(
+        f"The page responded in {response_time_ms/1000:.1f}s and weighs {page_size_kb:.0f} KB, two signals prospects feel immediately."
+    )
+    if weakest:
+        summary_parts.append(
+            f"Greatest friction sits within {_human_join(weakest)} where cohesion and storytelling taper off."
+        )
+    if strongest:
+        summary_parts.append(
+            f"Strengths you can amplify include {_human_join(strongest)}."
+        )
+    summary_parts.append(
+        "Use this blend of hard metrics and narrative talking points to frame the redesign opportunity with clients."
+    )
+    design_summary = " ".join(summary_parts)
+
+    if not gaps:
+        gaps.append(
+            "The core system is strong; focus on polishing micro-interactions to stay ahead of competitors."
+        )
+    if not recommended_actions:
+        recommended_actions.append(
+            "Document a lightweight design system playbook to protect the gains made across the experience."
+        )
+
+    evidence_points: List[str] = []
+    evidence_points.append(
+        f"First response landed in {response_time_ms:.0f} ms with a {status_code} status code — buyers expect <1500 ms for a premium feel."
+    )
+    evidence_points.append(
+        f"Page weight is {page_size_kb:.0f} KB across {image_count} images and {script_count} scripts, which influences load speed and perception."
+    )
+    if image_count and missing_alt_count:
+        evidence_points.append(
+            f"{missing_alt_count} of {image_count} images are missing alt text, leaving accessibility and SEO equity on the table."
+        )
+    if cta_count == 0:
+        evidence_points.append("No primary calls-to-action were detected, so visitors lack a clear next step.")
+    elif cta_count < 2:
+        evidence_points.append(
+            f"Only {cta_count} clear call-to-action link{'s' if cta_count != 1 else ''} were detected, limiting conversion paths."
+        )
+    if forms_count == 0:
+        evidence_points.append("No lead capture forms or booking widgets were present on the scanned page.")
+    if pd.notna(site_age):
+        evidence_points.append(
+            f"Server headers indicate a refresh cadence of about {site_age:.1f} years, signalling dated conventions."
+        )
+    evidence_points = list(dict.fromkeys([point for point in evidence_points if point.strip()]))
+
+    client_value_points: List[str] = []
+    if response_time_ms > 1800:
+        client_value_points.append(
+            f"Improving load time from {response_time_ms/1000:.1f}s toward 1.5s can recover 5–10% of stalled conversions."
+        )
+    if page_size_kb > 1500:
+        client_value_points.append(
+            "Optimising imagery and code to lighten the page will reduce bounce rates on mobile traffic."
+        )
+    if not mobile_friendly:
+        client_value_points.append(
+            "Mobile visitors encounter friction — 65% of B2B research now happens on phones, so this is high-impact."
+        )
+    if conversion_score < 70 or cta_count < 2:
+        client_value_points.append(
+            "Designing a focused conversion path with more prominent CTAs typically lifts booked calls by double digits."
+        )
+    if accessibility_score < 70 or alt_ratio < 0.8:
+        client_value_points.append(
+            "Closing accessibility gaps protects compliance and unlocks enterprise procurement opportunities."
+        )
+    if not client_value_points:
+        client_value_points.append(
+            "Even with respectable fundamentals, a strategic refresh can showcase new offerings and keep the brand ahead of competitors."
+        )
+
+    site_age_years = site_age if pd.notna(site_age) else np.nan
+
+    alt_coverage_value = (
+        f"{images_with_alt}/{image_count} images with alt text" if image_count else "No images detected"
+    )
+
+    technical_metrics = [
+        {
+            "label": "Response Time",
+            "value": f"{response_time_ms:.0f} ms",
+            "client_context": "Aim for under 1500 ms so prospects feel the site respond instantly.",
+        },
+        {
+            "label": "Page Weight",
+            "value": f"{page_size_kb:.0f} KB",
+            "client_context": "Keeping pages under ~1500 KB helps mobile visitors stay engaged.",
+        },
+        {
+            "label": "Status Code",
+            "value": str(status_code),
+            "client_context": "Reliable 200 responses build trust that the experience is stable.",
+        },
+        {
+            "label": "Image Alt Coverage",
+            "value": alt_coverage_value,
+            "client_context": "Alt text supports accessibility compliance and search visibility.",
+        },
+        {
+            "label": "Clear CTAs",
+            "value": str(cta_count),
+            "client_context": "We target 2–3 high-intent CTAs per key page to drive action.",
+        },
+        {
+            "label": "Lead Capture Points",
+            "value": f"{forms_count} forms",
+            "client_context": "Forms or booking widgets convert interest into conversations.",
+        },
+    ]
+
+    return {
+        'mobile_friendly': mobile_friendly,
+        'speed_score': speed_score,
+        'design_score': design_score,
+        'last_update': last_update if last_update else pd.NaT,
+        'design_breakdown': design_breakdown,
+        'design_summary': design_summary,
+        'design_strengths': strengths,
+        'design_gaps': gaps,
+        'recommended_actions': recommended_actions,
+        'client_value_points': client_value_points,
+        'evidence_points': evidence_points,
+        'response_time_ms': response_time_ms,
+        'page_size_kb': page_size_kb,
+        'status_code': status_code,
+        'image_count': image_count,
+        'script_count': script_count,
+        'word_count': word_count,
+        'cta_count': cta_count,
+        'forms_count': forms_count,
+        'technical_metrics': technical_metrics,
+        'site_age_years': site_age_years,
+        'alt_ratio': alt_ratio,
+        'missing_alt': missing_alt_count,
+    }
+    
 
 # Function to export to Excel with formatting
 def export_to_excel(df, filename="client_scouting_data.xlsx"):
@@ -936,16 +1267,32 @@ elif page == "Website Analyzer":
             if analysis:
                 st.success("Analysis complete!")
                 
+                site_age_years = analysis.get('site_age_years')
+
                 col1, col2, col3 = st.columns(3)
-                
+
                 with col1:
-                    st.metric("Website Age", f"{calculate_age(analysis['last_update']):.1f} years")
-                
+                    if site_age_years is not None and not pd.isna(site_age_years):
+                        st.metric("Website Age", f"{site_age_years:.1f} years")
+                    else:
+                        st.metric("Website Age", "Unknown")
+
                 with col2:
                     st.metric("Mobile Friendly", "Yes" if analysis['mobile_friendly'] else "No")
-                
+
                 with col3:
                     st.metric("Speed Score", f"{analysis['speed_score']}/100")
+
+                technical_metrics = analysis.get('technical_metrics', [])
+                if technical_metrics:
+                    with styled_card("insight-card"):
+                        st.markdown("#### Technical Performance Signals")
+                        for chunk in _chunk_sequence(technical_metrics, 3):
+                            metric_row = st.columns(len(chunk))
+                            for metric_col, metric in zip(metric_row, chunk):
+                                with metric_col:
+                                    st.metric(metric['label'], metric['value'])
+                                    st.caption(metric['client_context'])
                 
                 # Gauge chart for design score
                 fig = go.Figure(go.Indicator(
@@ -1025,7 +1372,10 @@ elif page == "Website Analyzer":
                 
                 opportunity_score += (100 - analysis['speed_score']) * 0.3
                 opportunity_score += (100 - analysis['design_score']) * 0.3
-                opportunity_score += min(calculate_age(analysis['last_update']) * 5, 25)  # Cap at 25 points
+                site_age_for_score = (
+                    site_age_years if site_age_years is not None and not pd.isna(site_age_years) else 0
+                )
+                opportunity_score += min(site_age_for_score * 5, 25)  # Cap at 25 points
                 
                 # Display recommendation based on score
                 if opportunity_score > 70:
@@ -1070,7 +1420,11 @@ elif page == "Website Analyzer":
                         f"{'Not mobile-friendly' if not analysis['mobile_friendly'] else 'Mobile-friendly, but could be improved'}",
                         f"Speed score: {analysis['speed_score']}/100",
                         f"Design score: {analysis['design_score']}/100",
-                        f"Website age: {calculate_age(analysis['last_update']):.1f} years"
+                        (
+                            f"Website age: ~{site_age_years:.1f} years"
+                            if site_age_years is not None and not pd.isna(site_age_years)
+                            else "Website age: not available from headers"
+                        ),
                     ]
                     breakdown = analysis.get('design_breakdown', {})
                     if breakdown:
