@@ -83,7 +83,12 @@ def main() -> None:
     if not script_path.exists():
         raise FileNotFoundError(f"Unable to locate Streamlit app at {script_path!s}")
 
-    flag_options = {"server.headless": False, "global.developmentMode": False}
+    flag_options = {
+        "server.headless": False,
+        "global.developmentMode": False,
+        "server.port": 3000,
+        "server.address": "127.0.0.1",
+    }
     bootstrap.run(str(script_path), "", [], flag_options)
 
 
