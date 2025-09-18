@@ -1,13 +1,11 @@
+import ast
+
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
-from PIL import Image
-import requests
-from io import BytesIO
-from bs4 import BeautifulSoup
 import time
 import random
 from pathlib import Path
@@ -17,6 +15,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
 import sys
 from contextlib import contextmanager
+from typing import Dict, Iterable, List, Sequence
 
 # Set page config
 st.set_page_config(page_title="Web Redesign Client Scout", layout="wide", initial_sidebar_state="expanded")
@@ -47,6 +46,126 @@ def styled_card(class_name: str = "dashboard-card"):
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+# Data model and helper utilities -------------------------------------------
+
+CLIENT_DATA_SCHEMA: Dict[str, str] = {
+    "Company Name": "object",
+    "Website URL": "object",
+    "Industry": "object",
+    "Contact Person": "object",
+    "Contact Email": "object",
+    "Contact Phone": "object",
+    "Last Website Update": "datetime64[ns]",
+    "Mobile Friendly": "object",
+    "Website Speed Score": "float64",
+    "Design Score": "float64",
+    "Potential Value": "float64",
+    "Priority": "object",
+    "Notes": "object",
+    "Last Contact Date": "datetime64[ns]",
+    "Status": "object",
+    "Design Summary": "object",
+    "Design Strengths": "object",
+    "Design Gaps": "object",
+    "Design Recommendations": "object",
+    "Design Breakdown": "object",
+}
+
+DESIGN_CATEGORY_LIBRARY: Dict[str, Dict[str, str]] = {
+    "Brand Cohesion": {
+        "strength": "Visual identity feels consistent and premium across the journey.",
+        "gap": "Brand cues shift between sections, diluting trust and recognition.",
+        "action": "Audit typography, colors, and imagery to create a documented UI kit that locks the brand together.",
+    },
+    "Visual Hierarchy": {
+        "strength": "Key sections guide the eye smoothly with clear spacing and typography.",
+        "gap": "Important messages compete for attention, forcing visitors to hunt for next steps.",
+        "action": "Restructure hero and pillar sections so that one primary action is obvious on every screen.",
+    },
+    "Content Clarity": {
+        "strength": "Messaging is concise and scannable, making the value proposition easy to grasp.",
+        "gap": "Copy blocks are dense, and supporting facts are buried below the fold.",
+        "action": "Rewrite key pages with skimmable headings, proof points, and simplified copy.",
+    },
+    "Conversion Readiness": {
+        "strength": "Calls-to-action feel intentional and are paired with persuasive proof.",
+        "gap": "Forms and CTAs lack urgency, so visitors stall before taking action.",
+        "action": "Design a focused conversion path with bold CTAs, risk reducers, and social proof in strategic locations.",
+    },
+    "Accessibility": {
+        "strength": "Color contrast and interaction states support inclusive browsing.",
+        "gap": "Contrast, keyboard focus, or alt text gaps will create friction for a growing portion of your audience.",
+        "action": "Address contrast ratios, alt text, and focus states to align with WCAG AA expectations.",
+    },
+}
+
+
+def create_empty_client_dataframe() -> pd.DataFrame:
+    """Return an empty client dataframe with the expected schema."""
+
+    return pd.DataFrame({col: pd.Series(dtype=dtype) for col, dtype in CLIENT_DATA_SCHEMA.items()})
+
+
+def ensure_client_dataframe_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Guarantee that *df* contains every column defined in the schema."""
+
+    for column, dtype in CLIENT_DATA_SCHEMA.items():
+        if column not in df.columns:
+            df[column] = pd.Series(dtype=dtype)
+    return df
+
+
+def _human_join(items: Sequence[str]) -> str:
+    """Return a human-friendly comma-separated list."""
+
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f" and {items[-1]}"
+
+
+def _chunk_sequence(items: Sequence, size: int) -> Iterable[Sequence]:
+    """Yield *items* in chunks of *size* elements."""
+
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
+def _normalize_collection(value) -> List[str]:
+    """Convert stored session data into a list of bullet points."""
+
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.split("|") if part.strip()]
+        if parts:
+            return parts
+        # Fallback: attempt to split comma-separated strings
+        return [segment.strip() for segment in value.split(",") if segment.strip()]
+    return [str(value)]
+
+
+def _parse_breakdown(value) -> Dict[str, float]:
+    """Best-effort parsing for stored design breakdown data."""
+
+    if isinstance(value, dict):
+        return {str(key): float(val) for key, val in value.items()}
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            return {}
+        if isinstance(parsed, dict):
+            try:
+                return {str(key): float(val) for key, val in parsed.items()}
+            except (TypeError, ValueError):
+                return {}
+    return {}
+
+
 # Load custom CSS from external file
 def load_css(css_file: str) -> str:
     css_path = get_asset_path(css_file)
@@ -64,7 +183,15 @@ st.title("Web Redesign Client Scouting Tool")
 st.subheader("Track and analyze potential clients for your web redesign business")
 
 # Sidebar for navigation with improved logo
-st.sidebar.image("https://via.placeholder.com/150x50?text=WebScout", use_container_width=True)
+st.sidebar.markdown(
+    """
+    <div class="sidebar-brand">
+        <div class="sidebar-brand__mark">Scout</div>
+        <div class="sidebar-brand__subtitle">Client Intelligence</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.sidebar.markdown("<div style='margin-bottom:1.5rem;'></div>", unsafe_allow_html=True)
 page = st.sidebar.selectbox("Navigation", ["Dashboard", "Client Database", "Website Analyzer", "Export Data", "Settings"])
 
@@ -79,20 +206,108 @@ def analyze_website(url):
     try:
         # This is a simplified simulation - in a real app, you would perform actual website analysis
         time.sleep(1)  # Simulate processing time
-        
-        # Randomly generate analysis scores for demo purposes
+
+        last_update = datetime(random.randint(2014, 2023), random.randint(1, 12), random.randint(1, 28))
         mobile_friendly = random.choice([True, False])
-        speed_score = random.randint(30, 95)
-        design_score = random.randint(20, 90)
-        last_update = datetime(random.randint(2015, 2022), random.randint(1, 12), random.randint(1, 28))
-        
+        speed_score = random.randint(35, 95)
+
+        design_breakdown = {
+            category: random.randint(40, 92) for category in DESIGN_CATEGORY_LIBRARY.keys()
+        }
+        design_score = int(np.clip(np.mean(list(design_breakdown.values())) + random.randint(-4, 4), 0, 100))
+
+        strengths: List[str] = []
+        gaps: List[str] = []
+        recommended_actions: List[str] = []
+
+        for category, score in design_breakdown.items():
+            details = DESIGN_CATEGORY_LIBRARY.get(category, {})
+            if score >= 72:
+                strengths.append(f"{category} ({score}/100) — {details.get('strength', '')}")
+            elif score <= 65:
+                gaps.append(f"{category} ({score}/100) — {details.get('gap', '')}")
+                recommended_actions.append(
+                    f"Raise {category.lower()} by {details.get('action', 'designing focused improvements for this area.')}"
+                )
+            else:
+                recommended_actions.append(
+                    f"Tighten {category.lower()} ({score}/100) so it matches the stronger sections. {details.get('action', '')}"
+                )
+
+        # Ensure lists contain unique, meaningful entries
+        recommended_actions = list(dict.fromkeys([action for action in recommended_actions if action.strip()]))
+        strengths = list(dict.fromkeys([item for item in strengths if item.strip()]))
+        gaps = list(dict.fromkeys([item for item in gaps if item.strip()]))
+
+        weakest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1])[:2]]
+        strongest = [name for name, value in sorted(design_breakdown.items(), key=lambda kv: kv[1], reverse=True)[:2]]
+
+        summary_parts = [
+            f"The design benchmark for {url} lands at **{design_score}/100**."
+        ]
+        if weakest:
+            summary_parts.append(
+                f"Greatest friction sits within {_human_join(weakest)} where visual cohesion and storytelling drop off."
+            )
+        if strongest:
+            summary_parts.append(
+                f"Strengths you can amplify include {_human_join(strongest)}."
+            )
+        summary_parts.append(
+            "These insights give you both the internal roadmap and the narrative to show clients why a redesign matters."
+        )
+        design_summary = " ".join(summary_parts)
+
+        if not gaps:
+            gaps.append("The core system is strong; focus on polishing micro-interactions to stay ahead of competitors.")
+        if not recommended_actions:
+            recommended_actions.append("Document a lightweight design system playbook to protect the gains made across the experience.")
+
+        evidence_points: List[str] = []
+        for category, score in sorted(design_breakdown.items(), key=lambda kv: kv[1])[:3]:
+            detail = DESIGN_CATEGORY_LIBRARY.get(category, {})
+            evidence_points.append(
+                f"{category} is trending at {score}/100 — {detail.get('gap', 'there is clear room for improvement that prospects will notice.')}"
+            )
+
+        site_age = calculate_age(last_update)
+        evidence_points.append(
+            f"The site has not seen a major refresh in roughly {site_age:.1f} years, so newer UX conventions are missing."
+        )
+
+        client_value_points: List[str] = []
+        if weakest:
+            lift = random.randint(12, 26)
+            client_value_points.append(
+                f"Elevating {_human_join(weakest)} typically unlocks {lift}% more qualified leads for redesign clients."
+            )
+        if speed_score < 70:
+            client_value_points.append(
+                f"Speed is scoring {speed_score}/100; every second of load delay can reduce conversions by up to 7%."
+            )
+        if not mobile_friendly:
+            client_value_points.append(
+                "Mobile visitors encounter friction — 65% of B2B research now happens on phones, so this is high-impact."
+            )
+        if not client_value_points:
+            client_value_points.append(
+                "Even with respectable fundamentals, a strategic refresh can showcase new offerings and keep the brand ahead of competitors."
+            )
+
         return {
             'mobile_friendly': mobile_friendly,
             'speed_score': speed_score,
             'design_score': design_score,
-            'last_update': last_update
+            'last_update': last_update,
+            'design_breakdown': design_breakdown,
+            'design_summary': design_summary,
+            'design_strengths': strengths,
+            'design_gaps': gaps,
+            'recommended_actions': recommended_actions,
+            'client_value_points': client_value_points,
+            'evidence_points': evidence_points,
         }
-    except:
+    except Exception:
         st.error(f"Failed to analyze {url}. Please check the URL and try again.")
         return None
 
@@ -178,36 +393,15 @@ def export_to_excel(df, filename="client_scouting_data.xlsx"):
 
 # Initialize session state for client data if it doesn't exist
 if 'client_data' not in st.session_state:
-    # Example data structure with one sample client
-    st.session_state.client_data = pd.DataFrame({
-        'Company Name': ['ABC Corp'],
-        'Website URL': ['http://example.com'],
-        'Industry': ['Technology'],
-        'Contact Person': ['John Smith'],
-        'Contact Email': ['john@abc.com'],
-        'Contact Phone': ['555-1234'],
-        'Last Website Update': ['2018-05-10'],
-        'Mobile Friendly': [True],
-        'Website Speed Score': [65],
-        'Design Score': [60],
-        'Potential Value': [75000],
-        'Priority': ['Medium'],
-        'Notes': ['Outdated design, slow loading'],
-        'Last Contact Date': ['2023-01-15'],
-        'Status': ['Prospecting']
-    })
-    
-    # Convert date columns to datetime
-    st.session_state.client_data['Last Website Update'] = pd.to_datetime(st.session_state.client_data['Last Website Update'])
-    st.session_state.client_data['Last Contact Date'] = pd.to_datetime(st.session_state.client_data['Last Contact Date'])
+    st.session_state.client_data = create_empty_client_dataframe()
+
+st.session_state.client_data = ensure_client_dataframe_schema(st.session_state.client_data)
 
 # Ensure datetime columns remain consistent across reruns
-st.session_state.client_data['Last Website Update'] = pd.to_datetime(
-    st.session_state.client_data['Last Website Update'], errors='coerce'
-)
-st.session_state.client_data['Last Contact Date'] = pd.to_datetime(
-    st.session_state.client_data['Last Contact Date'], errors='coerce'
-)
+for column in ["Last Website Update", "Last Contact Date"]:
+    st.session_state.client_data[column] = pd.to_datetime(
+        st.session_state.client_data[column], errors='coerce'
+    )
 
 # Dashboard Page
 if page == "Dashboard":
@@ -218,7 +412,12 @@ if page == "Dashboard":
         
         # Calculate current metrics
         total_clients = len(st.session_state.client_data)
-        avg_website_age = st.session_state.client_data['Last Website Update'].apply(calculate_age).mean()
+        avg_website_age = (
+            st.session_state.client_data['Last Website Update']
+            .apply(calculate_age)
+            .dropna()
+            .mean()
+        )
         total_potential_value = st.session_state.client_data['Potential Value'].sum()
         mobile_unfriendly_count = st.session_state.client_data['Mobile Friendly'].value_counts().get(False, 0)
         
@@ -230,60 +429,75 @@ if page == "Dashboard":
                 st.metric("Total Prospects", f"{total_clients}")
 
             with metric_col2:
-                st.metric("Avg Website Age", f"{avg_website_age:.1f} years")
+                avg_age_display = f"{avg_website_age:.1f} years" if total_clients else "—"
+                st.metric("Avg Website Age", avg_age_display)
 
             with metric_col3:
-                st.metric("Total Potential Value", f"${total_potential_value:,.0f}")
+                st.metric(
+                    "Total Potential Value",
+                    f"${total_potential_value:,.0f}" if total_clients else "—",
+                )
 
             with metric_col4:
-                st.metric("Not Mobile Friendly", f"{mobile_unfriendly_count} sites")
+                st.metric(
+                    "Not Mobile Friendly",
+                    f"{mobile_unfriendly_count} sites" if total_clients else "—",
+                )
 
         # Create charts with improved styling
         st.subheader("Analysis")
         perf_tab, value_tab = st.tabs(["Performance Snapshot", "Value vs. Website Age"])
 
         with perf_tab:
-            with styled_card():
-                fig1 = px.bar(
-                    st.session_state.client_data,
-                    x='Company Name',
-                    y='Website Speed Score',
-                    color='Priority',
-                    color_discrete_map={'High': '#e53e3e', 'Medium': '#ed8936', 'Low': '#38a169'},
-                    title="Website Speed Score by Company"
-                )
-                fig1.update_layout(
-                    height=400,
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    title_font=dict(size=18, color='#2d3748'),
-                    font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
-                    margin=dict(l=40, r=40, t=60, b=40),
-                )
-                st.plotly_chart(fig1, use_container_width=True)
+            if total_clients:
+                with styled_card():
+                    fig1 = px.bar(
+                        st.session_state.client_data,
+                        x='Company Name',
+                        y='Website Speed Score',
+                        color='Priority',
+                        color_discrete_map={'High': '#e53e3e', 'Medium': '#ed8936', 'Low': '#38a169'},
+                        title="Website Speed Score by Company"
+                    )
+                    fig1.update_layout(
+                        height=400,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        title_font=dict(size=18, color='#e2e8f0'),
+                        font=dict(family="Inter, Segoe UI, sans-serif", color='#94a3b8'),
+                        margin=dict(l=40, r=40, t=60, b=40),
+                    )
+                    st.plotly_chart(fig1, use_container_width=True)
+            else:
+                with styled_card():
+                    st.info("Add prospects to visualize performance trends.")
 
         with value_tab:
-            with styled_card():
-                fig2 = px.scatter(
-                    st.session_state.client_data,
-                    x=st.session_state.client_data['Last Website Update'].apply(calculate_age),
-                    y='Potential Value',
-                    size='Design Score',
-                    color='Industry',
-                    hover_name='Company Name',
-                    title="Potential Value vs. Website Age"
-                )
-                fig2.update_xaxes(title="Website Age (Years)")
-                fig2.update_yaxes(title="Potential Value ($)")
-                fig2.update_layout(
-                    height=400,
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    title_font=dict(size=18, color='#2d3748'),
-                    font=dict(family="Inter, Segoe UI, sans-serif", color='#4a5568'),
-                    margin=dict(l=40, r=40, t=60, b=40),
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+            if total_clients:
+                with styled_card():
+                    fig2 = px.scatter(
+                        st.session_state.client_data,
+                        x=st.session_state.client_data['Last Website Update'].apply(calculate_age),
+                        y='Potential Value',
+                        size='Design Score',
+                        color='Industry',
+                        hover_name='Company Name',
+                        title="Potential Value vs. Website Age"
+                    )
+                    fig2.update_xaxes(title="Website Age (Years)")
+                    fig2.update_yaxes(title="Potential Value ($)")
+                    fig2.update_layout(
+                        height=400,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        title_font=dict(size=18, color='#e2e8f0'),
+                        font=dict(family="Inter, Segoe UI, sans-serif", color='#94a3b8'),
+                        margin=dict(l=40, r=40, t=60, b=40),
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
+            else:
+                with styled_card():
+                    st.info("Once you add clients you'll see value potential plotted here.")
     
     with col2:
         with styled_card():
@@ -423,6 +637,11 @@ elif page == "Client Database":
                         'Mobile Friendly': analysis['mobile_friendly'],
                         'Website Speed Score': analysis['speed_score'],
                         'Design Score': analysis['design_score'],
+                        'Design Summary': analysis['design_summary'],
+                        'Design Strengths': analysis['design_strengths'],
+                        'Design Gaps': analysis['design_gaps'],
+                        'Design Recommendations': analysis['recommended_actions'],
+                        'Design Breakdown': analysis['design_breakdown'],
                         'Potential Value': random.randint(25000, 200000),  # Random value for demo
                         'Priority': new_priority,
                         'Notes': new_notes,
@@ -439,209 +658,268 @@ elif page == "Client Database":
                     st.success(f"Added {new_company} to the client database!")
                     st.experimental_rerun()
     
-    # Display the data table with edit capability
-    with styled_card():
-        st.dataframe(
-            filtered_data,
-            use_container_width=True,
-            height=400
-        )
-    
-    # Action buttons for selected client
-    st.subheader("Client Actions")
-    with styled_card():
-        selected_client = st.selectbox("Select Client", options=filtered_data['Company Name'].tolist())
+    if filtered_data.empty:
+        with styled_card():
+            st.info("Add prospects from the analyzer to build your working list.")
+    else:
+        # Display the data table with edit capability
+        with styled_card():
+            st.dataframe(
+                filtered_data,
+                use_container_width=True,
+                height=400
+            )
 
-        if selected_client:
-            client_data = filtered_data[filtered_data['Company Name'] == selected_client].iloc[0]
+        # Action buttons for selected client
+        st.subheader("Client Actions")
+        selected_client_data = None
+        with styled_card():
+            selected_client = st.selectbox("Select Client", options=filtered_data['Company Name'].tolist())
 
-            col1, col2, col3, col4 = st.columns(4)
+            if selected_client:
+                selected_client_data = filtered_data[filtered_data['Company Name'] == selected_client].iloc[0]
 
-            with col1:
-                if st.button("Edit Client"):
-                    st.session_state.edit_client = selected_client
+                col1, col2, col3, col4 = st.columns(4)
 
-            with col2:
-                if st.button("Delete Client"):
-                    st.session_state.client_data = st.session_state.client_data[
-                        st.session_state.client_data['Company Name'] != selected_client
-                    ]
-                    st.success(f"Deleted {selected_client} from the database.")
-                    st.experimental_rerun()
-
-            with col3:
-                if st.button("Log Contact"):
-                    # Update last contact date
-                    client_index = st.session_state.client_data.index[
-                        st.session_state.client_data['Company Name'] == selected_client
-                    ].tolist()[0]
-                    st.session_state.client_data.at[client_index, 'Last Contact Date'] = datetime.now()
-                    st.success(f"Updated last contact date for {selected_client}.")
-                    st.experimental_rerun()
-
-            with col4:
-                if st.button("Update Status"):
-                    st.session_state.update_status_client = selected_client
-        
-        # Handle status update
-        if 'update_status_client' in st.session_state and st.session_state.update_status_client == selected_client:
-            with st.form("update_status_form"):
-                new_status = st.selectbox(
-                    "New Status", 
-                    options=[
-                        "Prospecting", "Initial Contact", "Meeting Scheduled", 
-                        "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"
-                    ],
-                    index=["Prospecting", "Initial Contact", "Meeting Scheduled", 
-                           "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"
-                          ].index(client_data['Status'])
-                )
-                notes = st.text_area("Status Update Notes")
-                
-                if st.form_submit_button("Update"):
-                    client_index = st.session_state.client_data.index[
-                        st.session_state.client_data['Company Name'] == selected_client
-                    ].tolist()[0]
-                    
-                    st.session_state.client_data.at[client_index, 'Status'] = new_status
-                    
-                    # Append notes if provided
-                    if notes:
-                        current_notes = st.session_state.client_data.at[client_index, 'Notes']
-                        new_notes = f"{current_notes}\n\n[{datetime.now().strftime('%Y-%m-%d')}] Status changed to {new_status}: {notes}"
-                        st.session_state.client_data.at[client_index, 'Notes'] = new_notes
-                    
-                    st.success(f"Updated status for {selected_client} to {new_status}.")
-                    del st.session_state.update_status_client
-                    st.experimental_rerun()
-        
-        # Handle client edit
-        if 'edit_client' in st.session_state and st.session_state.edit_client == selected_client:
-            with st.form("edit_client_form"):
-                st.subheader(f"Edit {selected_client}")
-                
-                col1, col2 = st.columns(2)
-                
                 with col1:
-                    company = st.text_input("Company Name", value=client_data['Company Name'])
-                    website = st.text_input("Website URL", value=client_data['Website URL'])
-                    industry = st.selectbox("Industry", 
-                                          options=["Technology", "Manufacturing", "Software", "Retail", "Services", 
-                                                  "Healthcare", "Education", "Finance", "Entertainment", "Other"],
-                                          index=["Technology", "Manufacturing", "Software", "Retail", "Services", 
-                                                "Healthcare", "Education", "Finance", "Entertainment", "Other"
-                                               ].index(client_data['Industry']) if client_data['Industry'] in ["Technology", "Manufacturing", "Software", "Retail", "Services", 
-                                                                                                             "Healthcare", "Education", "Finance", "Entertainment", "Other"] else 0)
-                    contact = st.text_input("Contact Person", value=client_data['Contact Person'])
-                
+                    if st.button("Edit Client"):
+                        st.session_state.edit_client = selected_client
+
                 with col2:
-                    email = st.text_input("Contact Email", value=client_data['Contact Email'])
-                    phone = st.text_input("Contact Phone", value=client_data['Contact Phone'])
-                    priority = st.selectbox("Priority", 
-                                           options=["High", "Medium", "Low"],
-                                           index=["High", "Medium", "Low"].index(client_data['Priority']))
-                    potential_value = st.number_input("Potential Value ($)", 
-                                                    min_value=0, 
-                                                    value=int(client_data['Potential Value']))
-                
-                notes = st.text_area("Notes", value=client_data['Notes'])
-                
-                if st.form_submit_button("Save Changes"):
-                    client_index = st.session_state.client_data.index[
-                        st.session_state.client_data['Company Name'] == selected_client
-                    ].tolist()[0]
-                    
-                    # Update fields
-                    st.session_state.client_data.at[client_index, 'Company Name'] = company
-                    st.session_state.client_data.at[client_index, 'Website URL'] = website
-                    st.session_state.client_data.at[client_index, 'Industry'] = industry
-                    st.session_state.client_data.at[client_index, 'Contact Person'] = contact
-                    st.session_state.client_data.at[client_index, 'Contact Email'] = email
-                    st.session_state.client_data.at[client_index, 'Contact Phone'] = phone
-                    st.session_state.client_data.at[client_index, 'Priority'] = priority
-                    st.session_state.client_data.at[client_index, 'Potential Value'] = potential_value
-                    st.session_state.client_data.at[client_index, 'Notes'] = notes
-                    
-                    st.success(f"Updated information for {company}.")
-                    del st.session_state.edit_client
-                    st.experimental_rerun()
+                    if st.button("Delete Client"):
+                        st.session_state.client_data = st.session_state.client_data[
+                            st.session_state.client_data['Company Name'] != selected_client
+                        ]
+                        st.success(f"Deleted {selected_client} from the database.")
+                        st.experimental_rerun()
+
+                with col3:
+                    if st.button("Log Contact"):
+                        # Update last contact date
+                        client_index = st.session_state.client_data.index[
+                            st.session_state.client_data['Company Name'] == selected_client
+                        ].tolist()[0]
+                        st.session_state.client_data.at[client_index, 'Last Contact Date'] = datetime.now()
+                        st.success(f"Updated last contact date for {selected_client}.")
+                        st.experimental_rerun()
+
+                with col4:
+                    if st.button("Update Status"):
+                        st.session_state.update_status_client = selected_client
+
+            else:
+                selected_client_data = None
+
+        if 'update_status_client' in st.session_state:
+            target_client = st.session_state.update_status_client
+            if target_client in filtered_data['Company Name'].values:
+                client_data = st.session_state.client_data[st.session_state.client_data['Company Name'] == target_client].iloc[0]
+                with styled_card():
+                    with st.form("update_status_form"):
+                        new_status = st.selectbox(
+                            "New Status",
+                            options=[
+                                "Prospecting", "Initial Contact", "Meeting Scheduled",
+                                "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"
+                            ],
+                            index=[
+                                "Prospecting", "Initial Contact", "Meeting Scheduled",
+                                "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"
+                            ].index(client_data['Status'])
+                        )
+                        notes = st.text_area("Status Update Notes")
+
+                        if st.form_submit_button("Update"):
+                            client_index = st.session_state.client_data.index[
+                                st.session_state.client_data['Company Name'] == target_client
+                            ].tolist()[0]
+
+                            st.session_state.client_data.at[client_index, 'Status'] = new_status
+
+                            if notes:
+                                current_notes = st.session_state.client_data.at[client_index, 'Notes'] or ""
+                                new_notes = f"{current_notes}\n\n[{datetime.now().strftime('%Y-%m-%d')}] Status changed to {new_status}: {notes}".strip()
+                                st.session_state.client_data.at[client_index, 'Notes'] = new_notes
+
+                            st.success(f"Updated status for {target_client} to {new_status}.")
+                            del st.session_state.update_status_client
+                            st.experimental_rerun()
+
+        if 'edit_client' in st.session_state:
+            target_client = st.session_state.edit_client
+            if target_client in st.session_state.client_data['Company Name'].values:
+                client_data = st.session_state.client_data[st.session_state.client_data['Company Name'] == target_client].iloc[0]
+                with st.form("edit_client_form"):
+                    st.subheader(f"Edit {target_client}")
+
+                    col1, col2 = st.columns(2)
+
+                    industries = [
+                        "Technology", "Manufacturing", "Software", "Retail", "Services",
+                        "Healthcare", "Education", "Finance", "Entertainment", "Other"
+                    ]
+
+                    with col1:
+                        company = st.text_input("Company Name", value=client_data['Company Name'])
+                        website = st.text_input("Website URL", value=client_data['Website URL'])
+                        industry = st.selectbox(
+                            "Industry",
+                            options=industries,
+                            index=industries.index(client_data['Industry']) if client_data['Industry'] in industries else 0,
+                        )
+                        contact = st.text_input("Contact Person", value=client_data['Contact Person'])
+
+                    with col2:
+                        email = st.text_input("Contact Email", value=client_data['Contact Email'])
+                        phone = st.text_input("Contact Phone", value=client_data['Contact Phone'])
+                        priority = st.selectbox(
+                            "Priority",
+                            options=["High", "Medium", "Low"],
+                            index=["High", "Medium", "Low"].index(client_data['Priority'])
+                        )
+                        potential_value = st.number_input(
+                            "Potential Value ($)",
+                            min_value=0,
+                            value=int(client_data['Potential Value']) if not pd.isna(client_data['Potential Value']) else 0,
+                        )
+
+                    notes = st.text_area("Notes", value=client_data['Notes'])
+
+                    if st.form_submit_button("Save Changes"):
+                        client_index = st.session_state.client_data.index[
+                            st.session_state.client_data['Company Name'] == target_client
+                        ].tolist()[0]
+
+                        st.session_state.client_data.at[client_index, 'Company Name'] = company
+                        st.session_state.client_data.at[client_index, 'Website URL'] = website
+                        st.session_state.client_data.at[client_index, 'Industry'] = industry
+                        st.session_state.client_data.at[client_index, 'Contact Person'] = contact
+                        st.session_state.client_data.at[client_index, 'Contact Email'] = email
+                        st.session_state.client_data.at[client_index, 'Contact Phone'] = phone
+                        st.session_state.client_data.at[client_index, 'Priority'] = priority
+                        st.session_state.client_data.at[client_index, 'Potential Value'] = potential_value
+                        st.session_state.client_data.at[client_index, 'Notes'] = notes
+
+                        st.success(f"Updated information for {company}.")
+                        del st.session_state.edit_client
+                        st.experimental_rerun()
         
         # Display client details with improved styling
-        with styled_card():
-            st.subheader("Client Details")
+        if selected_client_data is not None:
+            with styled_card():
+                st.subheader("Client Details")
 
-            # Priority badge
-            priority_color = "#e53e3e" if client_data['Priority'] == "High" else "#ed8936" if client_data['Priority'] == "Medium" else "#38a169"
-            st.markdown(f"""
-            <div style="margin-bottom:1rem;">
-                <span class="priority-badge" style="color:{priority_color}; border-color:{priority_color}33; background-color:{priority_color}1a;">
-                    {client_data['Priority']} Priority
-                </span>
-            </div>
-            """, unsafe_allow_html=True)
+                # Priority badge
+                priority_color = "#e53e3e" if selected_client_data['Priority'] == "High" else "#ed8936" if selected_client_data['Priority'] == "Medium" else "#38a169"
+                st.markdown(f"""
+                <div style="margin-bottom:1rem;">
+                    <span class="priority-badge" style="color:{priority_color}; border-color:{priority_color}33; background-color:{priority_color}1a;">
+                        {selected_client_data['Priority']} Priority
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
+                col1, col2 = st.columns(2)
 
-            with col1:
-                # Use Streamlit native components instead of HTML
-                with st.container():
-                    st.markdown("#### Contact Information")
-                    col1a, col1b = st.columns([1, 2])
-                    with col1a:
-                        st.markdown("**Person:**")
-                        st.markdown("**Email:**")
-                        st.markdown("**Phone:**")
-                    with col1b:
-                        st.markdown(f"{client_data['Contact Person']}")
-                        st.markdown(f"{client_data['Contact Email']}")
-                        st.markdown(f"{client_data['Contact Phone']}")
+                with col1:
+                    with st.container():
+                        st.markdown("#### Contact Information")
+                        col1a, col1b = st.columns([1, 2])
+                        with col1a:
+                            st.markdown("**Person:**")
+                            st.markdown("**Email:**")
+                            st.markdown("**Phone:**")
+                        with col1b:
+                            st.markdown(f"{selected_client_data['Contact Person']}")
+                            st.markdown(f"{selected_client_data['Contact Email']}")
+                            st.markdown(f"{selected_client_data['Contact Phone']}")
 
-                    st.markdown("#### Business Information")
-                    col1a, col1b = st.columns([1, 2])
-                    with col1a:
-                        st.markdown("**Industry:**")
-                        st.markdown("**Potential Value:**")
-                        st.markdown("**Status:**")
-                        st.markdown("**Last Contact:**")
-                    with col1b:
-                        st.markdown(f"{client_data['Industry']}")
-                        st.markdown(f"${client_data['Potential Value']:,.0f}")
-                        st.markdown(f"{client_data['Status']}")
-                        st.markdown(f"{client_data['Last Contact Date'].strftime('%Y-%m-%d')}")
+                        st.markdown("#### Business Information")
+                        col1a, col1b = st.columns([1, 2])
+                        with col1a:
+                            st.markdown("**Industry:**")
+                            st.markdown("**Potential Value:**")
+                            st.markdown("**Status:**")
+                            st.markdown("**Last Contact:**")
+                        with col1b:
+                            st.markdown(f"{selected_client_data['Industry']}")
+                            st.markdown(f"${selected_client_data['Potential Value']:,.0f}")
+                            st.markdown(f"{selected_client_data['Status']}")
+                            st.markdown(f"{selected_client_data['Last Contact Date'].strftime('%Y-%m-%d')}")
 
-            with col2:
-                # Use Streamlit native components instead of HTML
-                with st.container():
-                    st.markdown("#### Website Information")
+                with col2:
+                    with st.container():
+                        st.markdown("#### Website Information")
 
-                    col2a, col2b = st.columns([1, 2])
-                    with col2a:
-                        st.markdown("**URL:**")
-                        st.markdown("**Last Update:**")
-                        st.markdown("**Mobile Friendly:**")
-                    with col2b:
-                        st.markdown(f"[{client_data['Website URL']}]({client_data['Website URL']})")
-                        st.markdown(f"{client_data['Last Website Update'].strftime('%Y-%m-%d')} ({calculate_age(client_data['Last Website Update']):.1f} years ago)")
-                        st.markdown(f"{'Yes' if client_data['Mobile Friendly'] else 'No'}")
+                        col2a, col2b = st.columns([1, 2])
+                        with col2a:
+                            st.markdown("**URL:**")
+                            st.markdown("**Last Update:**")
+                            st.markdown("**Mobile Friendly:**")
+                        with col2b:
+                            st.markdown(f"[{selected_client_data['Website URL']}]({selected_client_data['Website URL']})")
+                            st.markdown(f"{selected_client_data['Last Website Update'].strftime('%Y-%m-%d')} ({calculate_age(selected_client_data['Last Website Update']):.1f} years ago)")
+                            st.markdown(f"{'Yes' if selected_client_data['Mobile Friendly'] else 'No'}")
 
-                    # Speed Score
-                    st.markdown("**Speed Score:**")
-                    speed_score = client_data['Website Speed Score']
-                    st.progress(speed_score/100)
-                    col2c1, col2c2 = st.columns([3, 1])
-                    with col2c2:
-                        st.markdown(f"{speed_score}/100")
+                        st.markdown("**Speed Score:**")
+                        speed_score = selected_client_data['Website Speed Score']
+                        st.progress(speed_score/100)
+                        col2c1, col2c2 = st.columns([3, 1])
+                        with col2c2:
+                            st.markdown(f"{speed_score}/100")
 
-                    # Design Score
-                    st.markdown("**Design Score:**")
-                    design_score = client_data['Design Score']
-                    st.progress(design_score/100)
-                    col2d1, col2d2 = st.columns([3, 1])
-                    with col2d2:
-                        st.markdown(f"{design_score}/100")
+                        st.markdown("**Design Score:**")
+                        design_score = selected_client_data['Design Score']
+                        st.progress(design_score/100)
+                        col2d1, col2d2 = st.columns([3, 1])
+                        with col2d2:
+                            st.markdown(f"{design_score}/100")
+
+                strengths = _normalize_collection(selected_client_data.get('Design Strengths'))
+                gaps = _normalize_collection(selected_client_data.get('Design Gaps'))
+                recommendations = _normalize_collection(selected_client_data.get('Design Recommendations'))
+
+                design_summary_text = selected_client_data.get('Design Summary', '')
+                if pd.notna(design_summary_text) and str(design_summary_text).strip():
+                    st.markdown("#### Design Intelligence")
+                    st.markdown(str(design_summary_text))
+
+                    breakdown = _parse_breakdown(selected_client_data.get('Design Breakdown'))
+                    if breakdown:
+                        st.markdown("##### Score Breakdown")
+                        for chunk in _chunk_sequence(list(breakdown.items()), 3):
+                            metric_cols = st.columns(len(chunk))
+                            for metric_col, (label, value) in zip(metric_cols, chunk):
+                                with metric_col:
+                                    st.metric(label, f"{value:.0f}/100")
+
+                if strengths or gaps or recommendations:
+                    insight_col1, insight_col2 = st.columns(2)
+                    with insight_col1:
+                        if strengths:
+                            st.markdown("##### Strengths to Celebrate")
+                            for item in strengths:
+                                st.markdown(f"- ✅ {item}")
+                        if gaps:
+                            st.markdown("##### Friction Points")
+                            for item in gaps:
+                                st.markdown(f"- ⚠️ {item}")
+
+                    with insight_col2:
+                        if recommendations:
+                            st.markdown("##### Strategic Next Steps")
+                            for idx, action in enumerate(recommendations, 1):
+                                st.markdown(f"{idx}. {action}")
 
             st.subheader("Notes")
-            st.text_area("Client Notes", value=client_data['Notes'], height=200, key="readonly_notes", disabled=True)
+            note_value = selected_client_data['Notes'] if pd.notna(selected_client_data['Notes']) else ""
+            st.text_area(
+                "Client Notes",
+                value=str(note_value),
+                height=200,
+                key="readonly_notes",
+                disabled=True,
+            )
 
 # Website Analyzer Page
 elif page == "Website Analyzer":
@@ -677,22 +955,70 @@ elif page == "Website Analyzer":
                     title = {'text': "Design Score"},
                     gauge = {
                         'axis': {'range': [None, 100]},
-                        'bar': {'color': "#3498db"},
+                        'bar': {'color': "#38bdf8"},
                         'steps': [
-                            {'range': [0, 40], 'color': "#e74c3c"},
-                            {'range': [40, 70], 'color': "#f39c12"},
-                            {'range': [70, 100], 'color': "#2ecc71"}
+                            {'range': [0, 40], 'color': "#7f1d1d"},
+                            {'range': [40, 70], 'color': "#9a3412"},
+                            {'range': [70, 100], 'color': "#065f46"}
                         ]
                     }
                 ))
                 
                 st.plotly_chart(fig, use_container_width=True)
-                
+
+                st.markdown("### Design Intelligence Snapshot")
+
+                breakdown_items = list(analysis['design_breakdown'].items())
+                if breakdown_items:
+                    with styled_card("insight-card"):
+                        st.markdown("#### Score Breakdown")
+                        for chunk in _chunk_sequence(breakdown_items, 3):
+                            row_cols = st.columns(len(chunk))
+                            for col, (label, value) in zip(row_cols, chunk):
+                                with col:
+                                    st.metric(label, f"{value:.0f}/100")
+                                    st.progress(value / 100)
+
+                story_col, value_col = st.columns([1.6, 1])
+
+                with story_col:
+                    with styled_card("insight-card"):
+                        st.markdown("#### Storyline")
+                        st.markdown(analysis['design_summary'])
+
+                        strengths = analysis['design_strengths']
+                        if strengths:
+                            st.markdown("##### Strengths to Leverage")
+                            for item in strengths:
+                                st.markdown(f"- ✅ {item}")
+
+                        gaps = analysis['design_gaps']
+                        if gaps:
+                            st.markdown("##### Where Users Feel Friction")
+                            for item in gaps:
+                                st.markdown(f"- ⚠️ {item}")
+
+                with value_col:
+                    with styled_card("insight-card accent-card"):
+                        st.markdown("#### Client Value Talking Points")
+                        for point in analysis['client_value_points']:
+                            st.markdown(f"- 💡 {point}")
+
+                    with styled_card("insight-card"):
+                        st.markdown("#### Evidence to Share")
+                        for point in analysis['evidence_points']:
+                            st.markdown(f"- 📌 {point}")
+
+                with styled_card("insight-card"):
+                    st.markdown("#### High-Impact Next Steps")
+                    for idx, action in enumerate(analysis['recommended_actions'], 1):
+                        st.markdown(f"{idx}. {action}")
+
                 # Opportunity assessment with improved styling
                 st.subheader("Redesign Opportunity Assessment")
-                
+
                 opportunity_score = 0
-                
+
                 # Calculate opportunity score based on analysis
                 if not analysis['mobile_friendly']:
                     opportunity_score += 30
@@ -713,7 +1039,7 @@ elif page == "Website Analyzer":
                     priority = "Low"
                 
                 # Use Streamlit native components for the opportunity assessment
-                with st.container():
+                with styled_card("insight-card focus-card"):
                     # Header with priority badge
                     col1, col2 = st.columns([3, 1])
                     with col1:
@@ -746,6 +1072,12 @@ elif page == "Website Analyzer":
                         f"Design score: {analysis['design_score']}/100",
                         f"Website age: {calculate_age(analysis['last_update']):.1f} years"
                     ]
+                    breakdown = analysis.get('design_breakdown', {})
+                    if breakdown:
+                        weakest_focus = sorted(breakdown.items(), key=lambda kv: kv[1])[:2]
+                        if weakest_focus:
+                            focus_labels = [label for label, _ in weakest_focus]
+                            factors.append(f"Design focus: {_human_join(focus_labels)} need attention to lift credibility.")
                     for factor in factors:
                         st.markdown(f"- {factor}")
                 
@@ -795,6 +1127,11 @@ elif page == "Website Analyzer":
                                     'Mobile Friendly': st.session_state.add_analyzed_site['analysis']['mobile_friendly'],
                                     'Website Speed Score': st.session_state.add_analyzed_site['analysis']['speed_score'],
                                     'Design Score': st.session_state.add_analyzed_site['analysis']['design_score'],
+                                    'Design Summary': st.session_state.add_analyzed_site['analysis']['design_summary'],
+                                    'Design Strengths': st.session_state.add_analyzed_site['analysis']['design_strengths'],
+                                    'Design Gaps': st.session_state.add_analyzed_site['analysis']['design_gaps'],
+                                    'Design Recommendations': st.session_state.add_analyzed_site['analysis']['recommended_actions'],
+                                    'Design Breakdown': st.session_state.add_analyzed_site['analysis']['design_breakdown'],
                                     'Potential Value': int(opportunity_score * 2000),  # Rough estimate based on opportunity score
                                     'Priority': priority,
                                     'Notes': notes,
@@ -893,17 +1230,28 @@ elif page == "Export Data":
         "Select Template Type",
         options=["Initial Outreach Email", "Website Audit Report", "Proposal Document"]
     )
-    
-    client_for_template = st.selectbox(
-        "Select Client",
-        options=export_data['Company Name'].tolist()
-    )
-    
-    if st.button("Generate Template"):
-        client = export_data[export_data['Company Name'] == client_for_template].iloc[0]
-        
-        if template_type == "Initial Outreach Email":
-            template = f"""
+
+    client_options = export_data['Company Name'].tolist()
+    if client_options:
+        client_for_template = st.selectbox(
+            "Select Client",
+            options=client_options
+        )
+
+        if st.button("Generate Template"):
+            client = export_data[export_data['Company Name'] == client_for_template].iloc[0]
+
+            template_label = "Generated Template"
+            download_label = "Download Template"
+            download_name = f"{client_for_template.lower().replace(' ', '_')}_template.txt"
+            download_mime = "text/plain"
+
+            if template_type == "Initial Outreach Email":
+                template_label = "Email Template"
+                download_label = "Download Email Template"
+                download_name = f"{client_for_template.lower().replace(' ', '_')}_outreach_email.txt"
+                download_mime = "text/plain"
+                template = f"""
 Subject: Modernizing {client['Company Name']}'s Web Presence - Potential Partnership
             
 Dear {client['Contact Person']},
@@ -926,18 +1274,12 @@ Best regards,
 [Your Company]
 [Your Contact Information]
             """
-            
-            st.text_area("Email Template", template, height=400)
-            st.download_button(
-                "Download Email Template",
-                template,
-                file_name=f"{client_for_template.lower().replace(' ', '_')}_outreach_email.txt",
-                mime="text/plain"
-            )
-        
-        elif template_type == "Website Audit Report":
-            # Generate a more comprehensive website audit report
-            template = f"""
+            elif template_type == "Website Audit Report":
+                template_label = "Audit Report Template"
+                download_label = "Download Audit Report"
+                download_name = f"{client_for_template.lower().replace(' ', '_')}_website_audit.md"
+                download_mime = "text/markdown"
+                template = f"""
 # Website Audit Report for {client['Company Name']}
 **Prepared by: [Your Company]**
 **Date: {datetime.now().strftime('%B %d, %Y')}**
@@ -976,17 +1318,12 @@ In your industry ({client['Industry']}), websites typically feature [industry-sp
 ## Next Steps
 We would welcome the opportunity to discuss this audit in more detail and explore how we can help {client['Company Name']} implement these recommendations. Please contact us at [Your Contact Information] to schedule a consultation.
             """
-            
-            st.text_area("Audit Report Template", template, height=400)
-            st.download_button(
-                "Download Audit Report",
-                template,
-                file_name=f"{client_for_template.lower().replace(' ', '_')}_website_audit.md",
-                mime="text/markdown"
-            )
-        
-        else:  # Proposal Document
-            template = f"""
+            else:  # Proposal Document
+                template_label = "Proposal Template"
+                download_label = "Download Proposal Template"
+                download_name = f"{client_for_template.lower().replace(' ', '_')}_website_proposal.md"
+                download_mime = "text/markdown"
+                template = f"""
 # Website Redesign Proposal
 **Prepared for: {client['Company Name']}**
 **Contact: {client['Contact Person']}**
@@ -1065,14 +1402,16 @@ We look forward to partnering with {client['Company Name']} to create a website 
 [Your Company]
 [Your Contact Information]
             """
-            
-            st.text_area("Proposal Template", template, height=400)
+
+            st.text_area(template_label, template, height=400)
             st.download_button(
-                "Download Proposal Template",
+                download_label,
                 template,
-                file_name=f"{client_for_template.lower().replace(' ', '_')}_website_proposal.md",
-                mime="text/markdown"
+                file_name=download_name,
+                mime=download_mime
             )
+    else:
+        st.info("Add clients to the database to generate outreach templates.")
 
 # Settings Page
 elif page == "Settings":
