@@ -171,6 +171,14 @@ def _parse_breakdown(value) -> Dict[str, float]:
     return {}
 
 
+def _prepare_filter_options(series: pd.Series) -> List[str]:
+    """Return sorted filter options without null values."""
+
+    unique_values = series.unique()
+    cleaned_values = [value for value in unique_values if pd.notna(value)]
+    return sorted(str(value) for value in cleaned_values)
+
+
 # Load custom CSS from external file
 def load_css(css_file: str) -> str:
     css_path = get_asset_path(css_file)
@@ -889,39 +897,42 @@ elif page == "Client Database":
     # Filters in expandable section
     with st.expander("Filters"):
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
+            industry_options = _prepare_filter_options(st.session_state.client_data['Industry'])
             industry_filter = st.multiselect(
                 "Industry",
-                options=sorted(st.session_state.client_data['Industry'].unique()),
+                options=industry_options,
                 default=[]
             )
-        
+
         with col2:
+            priority_options = _prepare_filter_options(st.session_state.client_data['Priority'])
             priority_filter = st.multiselect(
                 "Priority",
-                options=sorted(st.session_state.client_data['Priority'].unique()),
+                options=priority_options,
                 default=[]
             )
-        
+
         with col3:
+            status_options = _prepare_filter_options(st.session_state.client_data['Status'])
             status_filter = st.multiselect(
                 "Status",
-                options=sorted(st.session_state.client_data['Status'].unique()),
+                options=status_options,
                 default=[]
             )
-    
+
     # Apply filters
     filtered_data = st.session_state.client_data.copy()
-    
+
     if industry_filter:
-        filtered_data = filtered_data[filtered_data['Industry'].isin(industry_filter)]
-    
+        filtered_data = filtered_data[filtered_data['Industry'].astype(str).isin(industry_filter)]
+
     if priority_filter:
-        filtered_data = filtered_data[filtered_data['Priority'].isin(priority_filter)]
-    
+        filtered_data = filtered_data[filtered_data['Priority'].astype(str).isin(priority_filter)]
+
     if status_filter:
-        filtered_data = filtered_data[filtered_data['Status'].isin(status_filter)]
+        filtered_data = filtered_data[filtered_data['Status'].astype(str).isin(status_filter)]
     
     # Add new client form
     with st.expander("Add New Client"):
