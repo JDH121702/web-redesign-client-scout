@@ -1,76 +1,91 @@
 # Web Redesign Client Scout
 
-A Streamlit application for tracking and analyzing potential clients for web redesign businesses.
+Web Redesign Client Scout is now distributed as a native console application
+written in C with a Python analysis engine. The frontend presents a focused
+command-line experience while the Python module handles live website heuristics
+and scoring.
 
-## Features
+## Architecture
 
-- **Dashboard**: View key metrics and visualizations of your client portfolio with tabbed analysis charts
-- **Client Database**: Manage client information and track interactions
-- **Website Analyzer**: Analyze websites to identify redesign opportunities
-- **Export Data**: Export client data in various formats (Excel, CSV, JSON)
-- **Settings**: Customize application settings and user profile
+- **`frontend.c`** – menu-driven C application that embeds the CPython runtime
+  and renders the analysis results.
+- **`analysis_engine.py`** – pure Python module that performs the
+  network request, HTML parsing, and scoring heuristics.
+- **`analysis_cli.py`** – optional helper that exposes the analysis from the
+  command line and powers automation or scripting workflows.
 
-## Screenshots
+The legacy Streamlit interface is still available in
+`web_redesign_client_scout.py` for reference but is no longer used when
+building the standalone application.
 
-(Screenshots will be added here)
+## Prerequisites
 
-## Installation
+- Python 3.11 or newer with the development headers installed
+- `python3-config` available on the PATH (ships with CPython)
+- A C compiler such as `gcc` or `clang`
 
-1. Clone this repository
-2. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
-   Using the bundled requirements file ensures compatible dependency versions
-   (for example, the build process requires `numpy<2`).
-3. Run the application:
-   ```
-   streamlit run web_redesign_client_scout.py
-   ```
+The Python dependencies used by the analysis engine are listed in
+`requirements.txt`.
 
-## Building a standalone Windows executable
+## Building the C frontend
 
-The project includes a helper script that wraps [PyInstaller](https://pyinstaller.org) to produce a single-file `.exe` that launches the Streamlit interface without requiring Python on the target machine.
+A `Makefile` is included for convenience:
 
-1. Install the runtime dependencies and PyInstaller:
-   ```
-   pip install -r requirements.txt
-   pip install pyinstaller
-   ```
-2. Build the executable:
-   ```
-   python build_executable.py
-   ```
-3. The bundled application will be available at `dist/WebRedesignClientScout.exe`. Copy the file to the target Windows machine and double-click it to launch the app.
+```bash
+make scout_frontend
+```
 
-If the build script reports that the executable cannot be overwritten, make sure
-no previous copy of `WebRedesignClientScout.exe` is still running before
-retrying.
+The Makefile automatically queries `python3-config` for the correct compiler
+flags. On platforms where `python3-config --embed` is not available, it falls
+back to the standard linker flags.
 
-The build script automatically includes the custom CSS theme, so the packaged app retains the polished UI from the development environment.
+To clean the build artifacts:
 
-## Usage
+```bash
+make clean
+```
 
-The application helps web design agencies identify and track potential clients for website redesign services:
+If you prefer invoking the compiler manually, the command typically looks like:
 
-1. Use the Website Analyzer to evaluate potential client websites
-2. Add promising prospects to your Client Database
-3. Track interactions and status changes in the Client Database
-4. Monitor your overall client portfolio in the Dashboard
-5. Export data for reporting or use in other systems
+```bash
+gcc frontend.c -o scout_frontend $(python3-config --embed --cflags --ldflags)
+```
 
-## Technologies Used
+On some distributions the `--embed` flag is not present; omit it in that case.
 
-- Streamlit
-- Pandas
-- Plotly
-- BeautifulSoup
-- Openpyxl
+## Running the application
+
+After building, launch the CLI frontend:
+
+```bash
+./scout_frontend
+```
+
+The menu will prompt for a URL, execute the Python analysis, and print the
+metrics, narrative summary, and supporting talking points directly to the
+terminal. Errors from the analysis module are surfaced in a friendly format.
+
+## Using the Python analysis directly
+
+You can call the analysis engine without compiling the C frontend via the
+helper CLI:
+
+```bash
+python analysis_cli.py https://example.com
+```
+
+Add `--json` to receive machine-readable output suitable for piping into other
+tools.
+
+## Development tips
+
+- `analysis_engine.py` contains the heuristics and can be extended with new
+  scoring rules without touching the C code.
+- The C frontend embeds Python once and reuses the interpreter across analyses,
+  so repeated scans are fast.
+- When modifying the analysis logic, unit tests can target the Python module
+directly. The CLI and frontend simply display the returned structure.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
