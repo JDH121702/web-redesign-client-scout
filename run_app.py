@@ -76,6 +76,10 @@ def _ensure_streamlit_metadata() -> None:
 
 _ensure_streamlit_metadata()
 from streamlit.web import bootstrap
+from streamlit.web.bootstrap import load_config_options
+
+# Ensure PyInstaller collects ``load_config_options`` when freezing the app.
+assert bootstrap.load_config_options is load_config_options
 
 
 def main() -> None:
@@ -89,6 +93,7 @@ def main() -> None:
         "server.port": 3000,
         "server.address": "127.0.0.1",
     }
+    bootstrap.load_config_options(flag_options)
     bootstrap.run(str(script_path), "", [], flag_options)
 
 
